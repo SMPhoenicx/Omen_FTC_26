@@ -50,7 +50,6 @@ import com.qualcomm.robotcore.util.Range;
  */
 
 @TeleOp(name="Main OpMode", group="Iterative OpMode")
-@Disabled
 public class MainOpMode extends OpMode
 {
     // Declare OpMode members.
@@ -69,10 +68,10 @@ public class MainOpMode extends OpMode
         // Initialize the hardware variables. Note that the strings used here as parameters
         // to 'get' must correspond to the names assigned during the robot configuration
         // step (using the FTC Robot Controller app on the phone).
-        leftFront  = hardwareMap.get(DcMotor.class, "lf");
-        rightFront = hardwareMap.get(DcMotor.class, "rf");
-        leftBack = hardwareMap.get(DcMotor.class, "lb");
-        rightBack = hardwareMap.get(DcMotor.class, "rb");
+        leftFront  = hardwareMap.get(DcMotor.class, "fl");
+        rightFront = hardwareMap.get(DcMotor.class, "fr");
+        leftBack = hardwareMap.get(DcMotor.class, "bl");
+        rightBack = hardwareMap.get(DcMotor.class, "br");
 
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
         // Pushing the left stick forward MUST make robot go forward. So adjust these two lines based on your first test drive.
