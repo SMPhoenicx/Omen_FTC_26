@@ -1,5 +1,4 @@
-package org.firstinspires.ftc.teamcode;/* Copyright (c) 2017 FIRST. All rights reserved.
- /* Copyright (c) 2017 FIRST. All rights reserved.
+/* Copyright (c) 2023 FIRST. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted (subject to the limitations in the disclaimer below) provided that
@@ -16,11 +15,11 @@ package org.firstinspires.ftc.teamcode;/* Copyright (c) 2017 FIRST. All rights r
  * promote products derived from this software without specific prior written permission.
  *
  * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
- * LICENSE. THIS SOFTjWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIEvD WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
- * FOR fANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
  * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
@@ -28,262 +27,216 @@ package org.firstinspires.ftc.teamcode;/* Copyright (c) 2017 FIRST. All rights r
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+package org.firstinspires.ftc.teamcode;
+
 import android.util.Size;
 
-import com.pedropathing.follower.Follower;
-import com.pedropathing.ftc.FTCCoordinates;
-import com.pedropathing.geometry.PedroCoordinates;
-import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
-
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-/*
- * This file contains an example of an iterative (Non-Linear) "OpMode".
- * An OpMode is a 'program' that runs in either the autonomous or the teleop period of an FTC match.
- * The names of OpModes appear on the menu of the FTC Driver Station.
- * When a selection is made from the menu, the corresponding OpMode
- * class is instantiated on the Robot Controller and executed.
- *
- * This particular OpMode just executes a basic Tank Drive Teleop for a two wheeled robot
- * It includes all the skeletal structure that all iterative OpModes contain.
- *
- * Use Android Studio to Copy this Class, and Paste it into your team's code folder with a new name.
- * Remove or comment out the @Disabled line to add this OpMode to the Driver Station OpMode list
- */
-
-@TeleOp(name="Main Main OpMode", group="Iterative OpMode")
-public class MainOpMode extends OpMode
+@TeleOp(name="MainOpMode", group = "Concept")
+public class MainOpMode extends LinearOpMode
 {
-    // Declare OpMode members.
-    private ElapsedTime runtime = new ElapsedTime();
-    private DcMotor leftFront = null;
-    private DcMotor leftBack = null;
-    private DcMotor rightFront = null;
-    private DcMotor rightBack = null;
+    final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
+    final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
 
+    private DcMotor frontLeftDrive = null;  //  Used to control the left front drive wheel
+    private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
+    private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
+    private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
 
-    private Follower follower;
-    private boolean following = false;
-    private final Pose TARGET_LOCATION = new Pose();
+   private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
+    private VisionPortal visionPortal;               // Used to manage the video source.
+    private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
 
-    private AprilTagProcessor aprilTag;
-    private VisionPortal visionPortal;
-    private boolean targetFound = false;
-    private AprilTagDetection desiredTag = null;
-    private static final int DESIRED_TAG_ID = 20;
+    @Override public void runOpMode()
+    {
+        boolean targetFound     = false;
+        double  drive           = 0;
+        double  strafe          = 0;
+        double  turn            = 0;
 
-    boolean lb1Pressed = false;
-    boolean rb1Pressed = false;
-    boolean b1Pressed = false;
-    boolean a1Pressed = false;
-    boolean x1Pressed = false;
-    boolean y1Pressed = false;
-    boolean down1Pressed = false;
-    boolean up1Pressed = false;
-    boolean right1Pressed = false;
-    boolean left1Pressed = false;
+        boolean lb1Pressed = false;
+        boolean rb1Pressed = false;
+        boolean b1Pressed = false;
+        boolean a1Pressed = false;
+        boolean x1Pressed = false;
+        boolean y1Pressed = false;
+        boolean down1Pressed = false;
+        boolean up1Pressed = false;
+        boolean right1Pressed = false;
+        boolean left1Pressed = false;
 
-    boolean lb2Pressed = false;
-    boolean rb2Pressed = false;
-    boolean b2Pressed = false;
-    boolean a2Pressed = false;
-    boolean x2Pressed = false;
-    boolean y2Pressed = false;
-    boolean down2Pressed = false;
-    boolean up2Pressed = false;
-    boolean right2Pressed = false;
-    boolean left2Pressed = false;
-
-    @Override
-    public void init() {
-        telemetry.addData("Status", "Initialized");
+        boolean lb2Pressed = false;
+        boolean rb2Pressed = false;
+        boolean b2Pressed = false;
+        boolean a2Pressed = false;
+        boolean x2Pressed = false;
+        boolean y2Pressed = false;
+        boolean down2Pressed = false;
+        boolean up2Pressed = false;
+        boolean right2Pressed = false;
+        boolean left2Pressed = false;
+        // Initialize the Apriltag Detection process
         initAprilTag();
 
-
-        follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(follower.getPose());
         // Initialize the hardware variables. Note that the strings used here as parameters
-        // to 'get' must correspond to the names assigned during the robot configuration
+        // to 'get' must match the names assigned during the robot configuration.
         // step (using the FTC Robot Controller app on the phone).
-        leftFront  = hardwareMap.get(DcMotor.class, "fl");
-        rightFront = hardwareMap.get(DcMotor.class, "fr");
-        leftBack = hardwareMap.get(DcMotor.class, "bl");
-        rightBack = hardwareMap.get(DcMotor.class, "br");
+        frontLeftDrive = hardwareMap.get(DcMotor.class, "fl");
+        frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
+        backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
+        backRightDrive = hardwareMap.get(DcMotor.class, "br");
 
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
-        // Pushing the left stick forward MUST make robot go forward. So adjust these two lines based on your first test drive.
+        // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
         // Note: The settings here assume direct drive on left and right wheels.  Gear Reduction or 90 Deg drives may require direction flips
-        leftFront.setDirection(DcMotor.Direction.REVERSE);
-        rightFront.setDirection(DcMotor.Direction.FORWARD);
-        leftBack.setDirection(DcMotor.Direction.REVERSE);
-        rightBack.setDirection(DcMotor.Direction.FORWARD);
+        frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
+        backRightDrive.setDirection(DcMotor.Direction.FORWARD);
 
-        // Tell the driver that initialization is complete.
-        telemetry.addData("Status", "Initialized");
-    }
+        setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
 
-    /*
-     * Code to run REPEATEDLY after the driver hits INIT, but before they hit START
-     */
-    @Override
-    public void init_loop() {
-    }
+        // Wait for driver to press start
+        telemetry.addData("Camera preview on/off", "3 dots, Camera Stream");
+        telemetry.addData(">", "Touch START to start OpMode");
+        telemetry.update();
+        waitForStart();
 
-    /*
-     * Code to run ONCE when the driver hits START
-     */
-    @Override
-    public void start() {
-        runtime.reset();
-    }
+        while (opModeIsActive())
+        {
+            targetFound = false;
+            // Used to hold the data for a detected AprilTag
+            AprilTagDetection desiredTag = null;
 
-    /*
-     * Code to run REPEATEDLY after the driver hits START but before they hit STOP
-     */
-    @Override
-    public void loop() {
-        follower.update();
-        targetFound = false;
-        desiredTag  = null;
-
-        // Step through the list of detected tags and look for a matching tag
-        List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-        for (AprilTagDetection detection : currentDetections) {
-            // Look to see if we have size info on this tag.
-            if (detection.metadata != null) {
-                //  Check to see if we want to track towards this tag.
-                if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
-                    // Yes, we want to use this tag.
-                    targetFound = true;
-                    desiredTag = detection;
-                    break;  // don't look any further.
+            // Step through the list of detected tags and look for a matching tag
+            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
+            for (AprilTagDetection detection : currentDetections) {
+                // Look to see if we have size info on this tag.
+                if (detection.metadata != null) {
+                    //  Check to see if we want to track towards this tag.
+                    if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
+                        // Yes, we want to use this tag.
+                        targetFound = true;
+                        desiredTag = detection;
+                        break;  // don't look any further.
+                    } else {
+                        // This tag is in the library, but we do not want to track it right now.
+                        telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
+                    }
                 } else {
-                    // This tag is in the library, but we do not want to track it right now.
-                    telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
+                    // This tag is NOT in the library, so we don't have enough information to track to it.
+                    telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
                 }
+            }
+
+            // Tell the driver what we see, and what to do.
+            if (targetFound) {
+                telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
+                telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
+                telemetry.addData("Range",  "%5.1f inches", desiredTag.ftcPose.range);
+                telemetry.addData("Bearing","%3.0f degrees", desiredTag.ftcPose.bearing);
+                telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
+            }
+
+            // If Left Bumper is being pressed, AND we have found the desired target, Turn to face target Automatically.
+            if (gamepad1.left_bumper && targetFound) {
+
+                // Heading error: angle left/right of camera center
+                double headingError = desiredTag.ftcPose.bearing;
+
+                // Apply proportional gain to generate turn power
+                turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+
+                // Zero out drive/strafe so it only rotates
+                drive = 0;
+                strafe = 0;
+
+                telemetry.addData("Auto", "Turn %5.2f (headingErr %3.0f°)", turn, headingError);
+
             } else {
-                // This tag is NOT in the library, so we don't have enough information to track to it.
-                telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
+                // Manual control
+                drive  = -gamepad1.left_stick_y;
+                strafe = -gamepad1.left_stick_x;
+                turn   = -gamepad1.right_stick_x;
             }
+
+            telemetry.update();
+
+            // Apply desired axes motions to the drivetrain.
+            moveRobot(drive, strafe, turn);
+
+            //update all button states
+            b1Pressed = gamepad1.b;
+            a1Pressed = gamepad1.a;
+            x1Pressed = gamepad1.x;
+            y1Pressed = gamepad1.y;
+            down1Pressed = gamepad1.dpad_down;
+            up1Pressed = gamepad1.dpad_up;
+            left1Pressed = gamepad1.dpad_left;
+            right1Pressed = gamepad1.dpad_right;
+            lb1Pressed = gamepad1.left_bumper;
+            rb1Pressed = gamepad1.right_bumper;
+
+            b2Pressed = gamepad2.b;
+            a2Pressed = gamepad2.a;
+            x2Pressed = gamepad2.x;
+            y2Pressed = gamepad2.y;
+            down2Pressed = gamepad2.dpad_down;
+            up2Pressed = gamepad2.dpad_up;
+            left2Pressed = gamepad2.dpad_left;
+            right2Pressed = gamepad2.dpad_right;
+            lb2Pressed = gamepad2.left_bumper;
+            rb2Pressed = gamepad2.right_bumper;
         }
-
-        //- DRIVE STUFF
-        double max;
-
-        // POV Mode uses left joystick to go forward & strafe, and right joystick to rotate.
-        double axial = -gamepad1.left_stick_y;  // Note: pushing stick forward gives negative value
-        double lateral = gamepad1.left_stick_x;
-        double yaw = gamepad1.right_stick_x;
-
-        // Combine the joystick requests for each axis-motion to determine each wheel's power.
-        // Set up a variable for each drive wheel to save the power level for telemetry.
-        double leftFrontPower = axial + lateral + yaw;
-        double rightFrontPower = axial - lateral - yaw;
-        double leftBackPower = axial - lateral + yaw;
-        double rightBackPower = axial + lateral - yaw;
-
-        if(gamepad1.b && !b1Pressed && targetFound) {
-            double tagBearing = desiredTag.ftcPose.bearing;
-
-            // Current robot heading
-            double currentHeading = follower.getPose().getHeading();
-
-            // Target heading is current + bearing
-            double targetHeading = currentHeading + tagBearing;
-
-            if (!following) {
-                // Tell Pedro follower to rotate to that heading
-                follower.turnTo(Math.toRadians(targetHeading));
-                following = true;
-            }
-            telemetry.addData("AHH", "HAPPENING");
-        }
-        else if (!gamepad1.b) {
-
-            telemetry.addData("b sucks", "BOOOOOO");
-        }
-        else if (b1Pressed) {
-
-            telemetry.addData("it all sucks", "BOOOOOO");
-        }
-        else if (!targetFound) {
-
-            telemetry.addData("AHH", "BOOOOOO");
-        }
-        else if (!following){
-            // Normalize the values so no wheel power exceeds 100%
-            // This ensures that the robot maintains the desired motion.
-            max = Math.max(Math.abs(leftFrontPower), Math.abs(rightFrontPower));
-            max = Math.max(max, Math.abs(leftBackPower));
-            max = Math.max(max, Math.abs(rightBackPower));
-
-            if (max > 1.0) {
-                leftFrontPower /= max;
-                rightFrontPower /= max;
-                leftBackPower /= max;
-                rightBackPower /= max;
-            }
-            // Send calculated power to wheels
-            leftFront.setPower(leftFrontPower);
-            rightFront.setPower(rightFrontPower);
-            leftBack.setPower(leftBackPower);
-            rightBack.setPower(rightBackPower);
-
-            telemetry.addData("bleh", "BOOOOOO");
-        }
-
-        if (following && !follower.isBusy()) following = false;
-
-        //update all button states
-        b1Pressed = gamepad1.b;
-        a1Pressed = gamepad1.a;
-        x1Pressed = gamepad1.x;
-        y1Pressed = gamepad1.y;
-        down1Pressed = gamepad1.dpad_down;
-        up1Pressed = gamepad1.dpad_up;
-        left1Pressed = gamepad1.dpad_left;
-        right1Pressed = gamepad1.dpad_right;
-        lb1Pressed = gamepad1.left_bumper;
-        rb1Pressed = gamepad1.right_bumper;
-
-        b2Pressed = gamepad2.b;
-        a2Pressed = gamepad2.a;
-        x2Pressed = gamepad2.x;
-        y2Pressed = gamepad2.y;
-        down2Pressed = gamepad2.dpad_down;
-        up2Pressed = gamepad2.dpad_up;
-        left2Pressed = gamepad2.dpad_left;
-        right2Pressed = gamepad2.dpad_right;
-        lb2Pressed = gamepad2.left_bumper;
-        rb2Pressed = gamepad2.right_bumper;
-
-        // Show the elapsed game time and wheel power.
-        telemetry.addData("Status", "Run Time: " + runtime.toString());
-        telemetry.addData("Front left/Right", "%4.2f, %4.2f", leftFrontPower, rightFrontPower);
-        telemetry.addData("Back  left/Right", "%4.2f, %4.2f", leftBackPower, rightBackPower);
-
-
     }
-    /*
-     * Code to run ONCE after the driver hits STOP
-     */
 
+    public void moveRobot(double x, double y, double yaw) {
+        // Calculate wheel powers.
+        double frontLeftPower    =  x - y - yaw;
+        double frontRightPower   =  x + y + yaw;
+        double backLeftPower     =  x + y - yaw;
+        double backRightPower    =  x - y + yaw;
+
+        // Normalize wheel powers to be less than 1.0
+        double max = Math.max(Math.abs(frontLeftPower), Math.abs(frontRightPower));
+        max = Math.max(max, Math.abs(backLeftPower));
+        max = Math.max(max, Math.abs(backRightPower));
+
+        if (max > 1.0) {
+            frontLeftPower /= max;
+            frontRightPower /= max;
+            backLeftPower /= max;
+            backRightPower /= max;
+        }
+
+        // Send powers to the wheels.
+        frontLeftDrive.setPower(frontLeftPower);
+        frontRightDrive.setPower(frontRightPower);
+        backLeftDrive.setPower(backLeftPower);
+        backRightDrive.setPower(backRightPower);
+    }
+
+    /**
+     * Initialize the AprilTag processor.
+     */
     private void initAprilTag() {
 
         // Create the AprilTag processor.
@@ -345,10 +298,42 @@ public class MainOpMode extends OpMode
         //visionPortal.setProcessorEnabled(aprilTag, true);
 
     }
-    @Override
-    public void stop() {
+
+    /*
+     Manually set the camera gain and exposure.
+     This can only be called AFTER calling initAprilTag(), and only works for Webcams;
+    */
+    private void setManualExposure(int exposureMS, int gain) {
+        // Wait for the camera to be open, then use the controls
+
+        if (visionPortal == null) {
+            return;
+        }
+
+        // Make sure camera is streaming before we try to set the exposure controls
+        if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
+            telemetry.addData("Camera", "Waiting");
+            telemetry.update();
+            while (!isStopRequested() && (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING)) {
+                sleep(20);
+            }
+            telemetry.addData("Camera", "Ready");
+            telemetry.update();
+        }
+
+        // Set camera controls unless we are stopping.
+        if (!isStopRequested())
+        {
+            ExposureControl exposureControl = visionPortal.getCameraControl(ExposureControl.class);
+            if (exposureControl.getMode() != ExposureControl.Mode.Manual) {
+                exposureControl.setMode(ExposureControl.Mode.Manual);
+                sleep(50);
+            }
+            exposureControl.setExposure((long)exposureMS, TimeUnit.MILLISECONDS);
+            sleep(20);
+            GainControl gainControl = visionPortal.getCameraControl(GainControl.class);
+            gainControl.setGain(gain);
+            sleep(20);
+        }
     }
-
 }
-
-

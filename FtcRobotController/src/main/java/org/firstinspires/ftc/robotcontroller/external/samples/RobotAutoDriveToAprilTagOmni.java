@@ -187,27 +187,29 @@ public class RobotAutoDriveToAprilTagOmni extends LinearOpMode
             }
 
             // If Left Bumper is being pressed, AND we have found the desired target, Drive to target Automatically .
+            // If Left Bumper is being pressed, AND we have found the desired target, Turn to face target Automatically.
             if (gamepad1.left_bumper && targetFound) {
 
-                // Determine heading, range and Yaw (tag image rotation) error so we can use them to control the robot automatically.
-                double  rangeError      = (desiredTag.ftcPose.range - DESIRED_DISTANCE);
-                double  headingError    = desiredTag.ftcPose.bearing;
-                double  yawError        = desiredTag.ftcPose.yaw;
+                // Heading error: angle left/right of camera center
+                double headingError = desiredTag.ftcPose.bearing;
 
-                // Use the speed and turn "gains" to calculate how we want the robot to move.
-                drive  = Range.clip(rangeError * SPEED_GAIN, -MAX_AUTO_SPEED, MAX_AUTO_SPEED);
-                turn   = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN) ;
-                strafe = Range.clip(-yawError * STRAFE_GAIN, -MAX_AUTO_STRAFE, MAX_AUTO_STRAFE);
+                // Apply proportional gain to generate turn power
+                turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
 
-                telemetry.addData("Auto","Drive %5.2f, Strafe %5.2f, Turn %5.2f ", drive, strafe, turn);
+                // Zero out drive/strafe so it only rotates
+                drive = 0;
+                strafe = 0;
+
+                telemetry.addData("Auto", "Turn %5.2f (headingErr %3.0f°)", turn, headingError);
+
             } else {
-
-                // drive using manual POV Joystick mode.  Slow things down to make the robot more controlable.
-                drive  = -gamepad1.left_stick_y  / 2.0;  // Reduce drive rate to 50%.
-                strafe = -gamepad1.left_stick_x  / 2.0;  // Reduce strafe rate to 50%.
-                turn   = -gamepad1.right_stick_x / 3.0;  // Reduce turn rate to 33%.
+                // Manual control
+                drive  = -gamepad1.left_stick_y  / 2.0;  // optional: keep forward/back
+                strafe = -gamepad1.left_stick_x  / 2.0;  // optional: keep strafing
+                turn   = -gamepad1.right_stick_x / 3.0;  // manual turning
                 telemetry.addData("Manual","Drive %5.2f, Strafe %5.2f, Turn %5.2f ", drive, strafe, turn);
             }
+
             telemetry.update();
 
             // Apply desired axes motions to the drivetrain.
