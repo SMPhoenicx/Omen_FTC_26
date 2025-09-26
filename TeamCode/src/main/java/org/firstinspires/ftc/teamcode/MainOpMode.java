@@ -60,11 +60,12 @@ public class MainOpMode extends LinearOpMode
     private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
     private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
     private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
+    private DcMotor flywheel = null;
 
    private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
-
+    private AprilTagDetection desiredTag;
     @Override public void runOpMode()
     {
         boolean targetFound     = false;
@@ -72,27 +73,6 @@ public class MainOpMode extends LinearOpMode
         double  strafe          = 0;
         double  turn            = 0;
 
-        boolean lb1Pressed = false;
-        boolean rb1Pressed = false;
-        boolean b1Pressed = false;
-        boolean a1Pressed = false;
-        boolean x1Pressed = false;
-        boolean y1Pressed = false;
-        boolean down1Pressed = false;
-        boolean up1Pressed = false;
-        boolean right1Pressed = false;
-        boolean left1Pressed = false;
-
-        boolean lb2Pressed = false;
-        boolean rb2Pressed = false;
-        boolean b2Pressed = false;
-        boolean a2Pressed = false;
-        boolean x2Pressed = false;
-        boolean y2Pressed = false;
-        boolean down2Pressed = false;
-        boolean up2Pressed = false;
-        boolean right2Pressed = false;
-        boolean left2Pressed = false;
         // Initialize the Apriltag Detection process
         initAprilTag();
 
@@ -103,6 +83,7 @@ public class MainOpMode extends LinearOpMode
         frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
+        flywheel = hardwareMap.get(DcMotor.class, "fly");
 
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
         // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
@@ -111,6 +92,7 @@ public class MainOpMode extends LinearOpMode
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
+        flywheel.setDirection(DcMotor.Direction.FORWARD);
 
         setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
 
@@ -123,9 +105,9 @@ public class MainOpMode extends LinearOpMode
         while (opModeIsActive())
         {
             targetFound = false;
-            // Used to hold the data for a detected AprilTag
-            AprilTagDetection desiredTag = null;
-
+            desiredTag  = null;
+            //flywheel
+            flywheel.setPower(gamepad1.right_trigger);
             // Step through the list of detected tags and look for a matching tag
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
@@ -182,29 +164,7 @@ public class MainOpMode extends LinearOpMode
 
             // Apply desired axes motions to the drivetrain.
             moveRobot(drive, strafe, turn);
-
-            //update all button states
-            b1Pressed = gamepad1.b;
-            a1Pressed = gamepad1.a;
-            x1Pressed = gamepad1.x;
-            y1Pressed = gamepad1.y;
-            down1Pressed = gamepad1.dpad_down;
-            up1Pressed = gamepad1.dpad_up;
-            left1Pressed = gamepad1.dpad_left;
-            right1Pressed = gamepad1.dpad_right;
-            lb1Pressed = gamepad1.left_bumper;
-            rb1Pressed = gamepad1.right_bumper;
-
-            b2Pressed = gamepad2.b;
-            a2Pressed = gamepad2.a;
-            x2Pressed = gamepad2.x;
-            y2Pressed = gamepad2.y;
-            down2Pressed = gamepad2.dpad_down;
-            up2Pressed = gamepad2.dpad_up;
-            left2Pressed = gamepad2.dpad_left;
-            right2Pressed = gamepad2.dpad_right;
-            lb2Pressed = gamepad2.left_bumper;
-            rb2Pressed = gamepad2.right_bumper;
+            sleep(10);
         }
     }
 
@@ -268,35 +228,12 @@ public class MainOpMode extends LinearOpMode
         aprilTag.setDecimation(3);
 
         // Create the vision portal by using a builder.
-        VisionPortal.Builder builder = new VisionPortal.Builder();
-
-        // Set the camera (webcam vs. built-in RC phone camera).
-        builder.setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"));
-
-
-        // Choose a camera resolution. Not all cameras support all resolutions.
-        builder.setCameraResolution(new Size(640, 480));
-
-        // Enable the RC preview (LiveView).  Set "false" to omit camera monitoring.
-        builder.enableLiveView(true);
-
-        // Set the stream format; MJPEG uses less bandwidth than default YUY2.
-        //builder.setStreamFormat(VisionPortal.StreamFormat.YUY2);
-
-        // Choose whether or not LiveView stops if no processors are enabled.
-        // If set "true", monitor shows solid orange screen if no processors enabled.
-        // If set "false", monitor shows camera view without annotations.
-        //builder.setAutoStopLiveView(false);
-
-        // Set and enable the processor.
-        builder.addProcessor(aprilTag);
-
-        // Build the Vision Portal, using the above settings.
-        visionPortal = builder.build();
-
-        // Disable or re-enable the aprilTag processor at any time.
-        //visionPortal.setProcessorEnabled(aprilTag, true);
-
+        visionPortal = new VisionPortal.Builder()
+                .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
+                .addProcessor(aprilTag)
+                .setCameraResolution(new Size(1280, 720))
+                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
+                .build();
     }
 
     /*
