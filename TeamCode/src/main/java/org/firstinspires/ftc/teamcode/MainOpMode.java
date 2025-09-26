@@ -66,6 +66,7 @@ public class MainOpMode extends LinearOpMode
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
     private AprilTagDetection desiredTag;
+    private float flywheelPower=0;
     @Override public void runOpMode()
     {
         boolean targetFound     = false;
@@ -106,8 +107,16 @@ public class MainOpMode extends LinearOpMode
         {
             targetFound = false;
             desiredTag  = null;
+
             //flywheel
-            flywheel.setPower(gamepad1.right_trigger);
+            flywheelPower += (gamepad1.right_trigger-gamepad1.left_trigger)/20;
+            if(flywheelPower>1){
+                flywheelPower=1;
+            }
+            flywheel.setPower(flywheelPower);
+            telemetry.addData("Shooter power",flywheelPower);
+            telemetry.update();
+
             // Step through the list of detected tags and look for a matching tag
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
