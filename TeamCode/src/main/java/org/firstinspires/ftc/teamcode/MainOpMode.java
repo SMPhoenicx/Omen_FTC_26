@@ -35,6 +35,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
@@ -56,12 +57,13 @@ public class MainOpMode extends LinearOpMode
     final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
     final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
 
+    private ElapsedTime runtime = new ElapsedTime();
     private DcMotor frontLeftDrive = null;  //  Used to control the left front drive wheel
     private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
     private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
     private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
     private DcMotor flywheel = null;
-
+    private DcMotor intake = null;
    private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
@@ -72,7 +74,31 @@ public class MainOpMode extends LinearOpMode
         double  drive           = 0;
         double  strafe          = 0;
         double  turn            = 0;
+        double flySpeed = 0;
+        boolean flyOn = false;
+        double lastTime = 0;
 
+        boolean lb1Pressed = false;
+        boolean rb1Pressed = false;
+        boolean b1Pressed = false;
+        boolean a1Pressed = false;
+        boolean x1Pressed = false;
+        boolean y1Pressed = false;
+        boolean down1Pressed = false;
+        boolean up1Pressed = false;
+        boolean right1Pressed = false;
+        boolean left1Pressed = false;
+
+        boolean lb2Pressed = false;
+        boolean rb2Pressed = false;
+        boolean b2Pressed = false;
+        boolean a2Pressed = false;
+        boolean x2Pressed = false;
+        boolean y2Pressed = false;
+        boolean down2Pressed = false;
+        boolean up2Pressed = false;
+        boolean right2Pressed = false;
+        boolean left2Pressed = false;
         // Initialize the Apriltag Detection process
         initAprilTag();
 
@@ -84,7 +110,7 @@ public class MainOpMode extends LinearOpMode
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
         flywheel = hardwareMap.get(DcMotor.class, "fly");
-
+        intake = hardwareMap.get(DcMotor.class, "in");
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
         // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
         // Note: The settings here assume direct drive on left and right wheels.  Gear Reduction or 90 Deg drives may require direction flips
@@ -93,6 +119,7 @@ public class MainOpMode extends LinearOpMode
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
         flywheel.setDirection(DcMotor.Direction.FORWARD);
+        intake.setDirection(DcMotor.Direction.REVERSE);
 
         setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
 
@@ -101,13 +128,45 @@ public class MainOpMode extends LinearOpMode
         telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
         waitForStart();
+        runtime.reset();
 
         while (opModeIsActive())
         {
             targetFound = false;
             desiredTag  = null;
+
             //flywheel
-            flywheel.setPower(gamepad1.right_trigger);
+            if(gamepad1.a && !a1Pressed)  {
+                flyOn = !flyOn;
+                flySpeed = 0.5;
+            }
+            if(flyOn) {
+                flywheel.setPower(flySpeed);
+            }
+            else {
+                flywheel.setPower(0);
+            }
+            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 500)) {
+                flySpeed += (flySpeed < 1)? 0.05:0;
+                lastTime = runtime.milliseconds();
+            }
+            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 500)) {
+                flySpeed -= (flySpeed > 0)? 0.05:0;
+                lastTime = runtime.milliseconds();
+            }
+
+            // Intake
+
+            if(gamepad1.right_bumper && !rb1Pressed) {
+                if(intake.getPower() <= 0) intake.setPower(1);
+                else intake.setPower(0);
+            }
+
+            //Outtake
+            if(gamepad1.left_bumper && !lb1Pressed) {
+                intake.setPower(-0.6);
+            }
+
             // Step through the list of detected tags and look for a matching tag
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
@@ -116,9 +175,9 @@ public class MainOpMode extends LinearOpMode
                     //  Check to see if we want to track towards this tag.
                     if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
                         // Yes, we want to use this tag.
-                        targetFound = true;
                         desiredTag = detection;
-                        break;  // don't look any further.
+                        targetFound = true;
+                        break;
                     } else {
                         // This tag is in the library, but we do not want to track it right now.
                         telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
@@ -139,7 +198,7 @@ public class MainOpMode extends LinearOpMode
             }
 
             // If Left Bumper is being pressed, AND we have found the desired target, Turn to face target Automatically.
-            if (gamepad1.left_bumper && targetFound) {
+            if (gamepad1.dpad_down && targetFound) {
 
                 // Heading error: angle left/right of camera center
                 double headingError = desiredTag.ftcPose.bearing;
@@ -160,10 +219,35 @@ public class MainOpMode extends LinearOpMode
                 turn   = -gamepad1.right_stick_x;
             }
 
-            telemetry.update();
-
             // Apply desired axes motions to the drivetrain.
             moveRobot(drive, strafe, turn);
+
+            b1Pressed = gamepad1.b;
+            a1Pressed = gamepad1.a;
+            x1Pressed = gamepad1.x;
+            y1Pressed = gamepad1.y;
+            down1Pressed = gamepad1.dpad_down;
+            up1Pressed = gamepad1.dpad_up;
+            left1Pressed = gamepad1.dpad_left;
+            right1Pressed = gamepad1.dpad_right;
+            lb1Pressed = gamepad1.left_bumper;
+            rb1Pressed = gamepad1.right_bumper;
+
+            b2Pressed = gamepad2.b;
+            a2Pressed = gamepad2.a;
+            x2Pressed = gamepad2.x;
+            y2Pressed = gamepad2.y;
+            down2Pressed = gamepad2.dpad_down;
+            up2Pressed = gamepad2.dpad_up;
+            left2Pressed = gamepad2.dpad_left;
+            right2Pressed = gamepad2.dpad_right;
+            lb2Pressed = gamepad2.left_bumper;
+            rb2Pressed = gamepad2.right_bumper;
+            telemetry.addData("Status", "Run Time: " + runtime.toString());
+            telemetry.addData("Fly state", flyOn);
+            telemetry.addData("Fly power", flySpeed);
+            telemetry.update();
+
             sleep(10);
         }
     }
@@ -213,8 +297,6 @@ public class MainOpMode extends LinearOpMode
                 // == CAMERA CALIBRATION ==
                 // If you do not manually specify calibration parameters, the SDK will attempt
                 // to load a predefined calibration for your camera.
-                //.setLensIntrinsics(578.272, 578.272, 402.145, 221.506)
-                // ... these parameters are fx, fy, cx, cy.
 
                 .build();
 

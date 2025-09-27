@@ -169,7 +169,6 @@ public class RobotAutoDriveToAprilTagOmni extends LinearOpMode
                         // Yes, we want to use this tag.
                         targetFound = true;
                         desiredTag = detection;
-                        break;  // don't look any further.
                     } else {
                         // This tag is in the library, but we do not want to track it right now.
                         telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
