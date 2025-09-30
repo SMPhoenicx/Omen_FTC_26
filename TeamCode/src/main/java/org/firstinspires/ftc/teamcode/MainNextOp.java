@@ -41,7 +41,10 @@ import dev.nextftc.core.subsystems.Subsystem;
 import dev.nextftc.ftc.Gamepads;
 import dev.nextftc.ftc.NextFTCOpMode;
 import dev.nextftc.ftc.components.BulkReadComponent;
+import dev.nextftc.hardware.driving.FieldCentric;
 import dev.nextftc.hardware.driving.MecanumDriverControlled;
+import dev.nextftc.hardware.impl.Direction;
+import dev.nextftc.hardware.impl.IMUEx;
 import dev.nextftc.hardware.impl.MotorEx;
 
 
@@ -53,6 +56,7 @@ public class MainNextOp extends NextFTCOpMode {
     private MotorEx backLeftMotor = new MotorEx("bl")
             .reversed();
     private MotorEx backRightMotor = new MotorEx("br");
+    private IMUEx imu = new IMUEx("imu", Direction.UP, Direction.FORWARD).zeroed();
 
     public MainNextOp() {
         addComponents(
@@ -70,7 +74,8 @@ public class MainNextOp extends NextFTCOpMode {
                 backRightMotor,
                 Gamepads.gamepad1().leftStickY().invert(),
                 Gamepads.gamepad1().leftStickX(),
-                Gamepads.gamepad1().rightStickX()
+                Gamepads.gamepad1().rightStickX(),
+                new FieldCentric(imu)
         );
         driverControlled.schedule();
     }

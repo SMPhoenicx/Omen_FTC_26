@@ -64,6 +64,8 @@ public class MainOpMode extends LinearOpMode
     private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
     private DcMotor flywheel = null;
     private DcMotor intake = null;
+    private DcMotor trans1 = null;
+    private DcMotor trans2 = null;
    private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
@@ -77,6 +79,7 @@ public class MainOpMode extends LinearOpMode
         double flySpeed = 0;
         boolean flyOn = false;
         double lastTime = 0;
+        boolean transOn = false;
 
         boolean lb1Pressed = false;
         boolean rb1Pressed = false;
@@ -111,6 +114,9 @@ public class MainOpMode extends LinearOpMode
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
         flywheel = hardwareMap.get(DcMotor.class, "fly");
         intake = hardwareMap.get(DcMotor.class, "in");
+
+        trans1 = hardwareMap.get(DcMotor.class, "t1");
+        trans2 = hardwareMap.get(DcMotor.class, "t2");
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
         // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
         // Note: The settings here assume direct drive on left and right wheels.  Gear Reduction or 90 Deg drives may require direction flips
@@ -153,6 +159,18 @@ public class MainOpMode extends LinearOpMode
             if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 500)) {
                 flySpeed -= (flySpeed > 0)? 0.05:0;
                 lastTime = runtime.milliseconds();
+            }
+            //Transfer temp
+            if (gamepad1.b && !b1Pressed) {
+                transOn = !transOn;
+            }
+            if (transOn) {
+                trans1.setPower(1);
+                trans2.setPower(1);
+            }
+            else {
+                trans1.setPower(0);
+                trans2.setPower(0);
             }
 
             // Intake
