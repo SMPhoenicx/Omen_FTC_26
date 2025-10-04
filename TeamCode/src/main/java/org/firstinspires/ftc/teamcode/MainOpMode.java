@@ -34,7 +34,9 @@ import android.util.Size;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
@@ -66,6 +68,8 @@ public class MainOpMode extends LinearOpMode
     private DcMotor intake = null;
     private DcMotor trans1 = null;
     private DcMotor trans2 = null;
+    private CRServo rspin = null;
+    private CRServo lspin = null;
    private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
@@ -114,6 +118,8 @@ public class MainOpMode extends LinearOpMode
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
         flywheel = hardwareMap.get(DcMotor.class, "fly");
         intake = hardwareMap.get(DcMotor.class, "in");
+        rspin = hardwareMap.get(CRServo.class, "rspin");
+        lspin = hardwareMap.get(CRServo.class, "lspin");
 
         trans1 = hardwareMap.get(DcMotor.class, "t1");
         trans2 = hardwareMap.get(DcMotor.class, "t2");
@@ -126,6 +132,8 @@ public class MainOpMode extends LinearOpMode
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
         flywheel.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
+        rspin.setDirection(CRServo.Direction.FORWARD);
+        lspin.setDirection(CRServo.Direction.FORWARD);
 
         setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
 
@@ -152,14 +160,22 @@ public class MainOpMode extends LinearOpMode
             else {
                 flywheel.setPower(0);
             }
-            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 500)) {
+            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
                 flySpeed += (flySpeed < 1)? 0.05:0;
                 lastTime = runtime.milliseconds();
             }
-            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 500)) {
+            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
                 flySpeed -= (flySpeed > 0)? 0.05:0;
                 lastTime = runtime.milliseconds();
             }
+
+            if(gamepad1.dpad_right && !right1Pressed) {
+                lspin.setPower(1); rspin.setPower(1);
+            }
+            if(gamepad1.dpad_left && !left1Pressed) {
+                lspin.setPower(-1); rspin.setPower(-1);
+            }
+
             //Transfer temp
             if (gamepad1.b && !b1Pressed) {
                 transOn = !transOn;
@@ -311,7 +327,7 @@ public class MainOpMode extends LinearOpMode
                 //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
                 .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary())
                 .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
-
+                .setLensIntrinsics(904.848699568, 904.848699568, 658.131998572, 340.91602987)
                 // == CAMERA CALIBRATION ==
                 // If you do not manually specify calibration parameters, the SDK will attempt
                 // to load a predefined calibration for your camera.
