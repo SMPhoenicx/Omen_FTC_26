@@ -64,7 +64,8 @@ public class MainOpMode extends LinearOpMode
     private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
     private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
     private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
-    private DcMotor flywheel = null;
+    private DcMotor fly1 = null;
+    private DcMotor fly2 = null;
     private DcMotor intake = null;
     private DcMotor trans1 = null;
     private DcMotor trans2 = null;
@@ -116,7 +117,8 @@ public class MainOpMode extends LinearOpMode
         frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
-        flywheel = hardwareMap.get(DcMotor.class, "fly");
+        fly1 = hardwareMap.get(DcMotor.class, "fly1");
+        fly2 = hardwareMap.get(DcMotor.class, "fly2");
         intake = hardwareMap.get(DcMotor.class, "in");
         rspin = hardwareMap.get(CRServo.class, "rspin");
         lspin = hardwareMap.get(CRServo.class, "lspin");
@@ -130,7 +132,8 @@ public class MainOpMode extends LinearOpMode
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        flywheel.setDirection(DcMotor.Direction.FORWARD);
+        fly1.setDirection(DcMotor.Direction.FORWARD);
+        fly2.setDirection(DcMotor.Direction.REVERSE);
         intake.setDirection(DcMotor.Direction.REVERSE);
         rspin.setDirection(CRServo.Direction.FORWARD);
         lspin.setDirection(CRServo.Direction.FORWARD);
@@ -155,10 +158,12 @@ public class MainOpMode extends LinearOpMode
                 flySpeed = 0.5;
             }
             if(flyOn) {
-                flywheel.setPower(flySpeed);
+                fly1.setPower(flySpeed);
+                fly2.setPower(flySpeed);
             }
             else {
-                flywheel.setPower(0);
+                fly2.setPower(0);
+                fly2.setPower(0);
             }
             if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
                 flySpeed += (flySpeed < 1)? 0.05:0;
@@ -172,8 +177,11 @@ public class MainOpMode extends LinearOpMode
             if(gamepad1.dpad_right && !right1Pressed) {
                 lspin.setPower(1); rspin.setPower(1);
             }
-            if(gamepad1.dpad_left && !left1Pressed) {
+            else if(gamepad1.dpad_left && !left1Pressed) {
                 lspin.setPower(-1); rspin.setPower(-1);
+            }
+            else {
+                lspin.setPower(0); rspin.setPower(0);
             }
 
             //Transfer temp
