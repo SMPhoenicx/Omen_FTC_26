@@ -36,6 +36,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
@@ -67,10 +68,9 @@ public class MainOpMode extends LinearOpMode
     private DcMotor fly1 = null;
     private DcMotor fly2 = null;
     private DcMotor intake = null;
-    private DcMotor trans1 = null;
-    private DcMotor trans2 = null;
     private CRServo rspin = null;
     private CRServo lspin = null;
+    private Servo feeder = null;
    private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
@@ -84,7 +84,7 @@ public class MainOpMode extends LinearOpMode
         double flySpeed = 0;
         boolean flyOn = false;
         double lastTime = 0;
-        boolean transOn = false;
+        boolean feederUp = false;
 
         boolean lb1Pressed = false;
         boolean rb1Pressed = false;
@@ -122,9 +122,8 @@ public class MainOpMode extends LinearOpMode
         intake = hardwareMap.get(DcMotor.class, "in");
         rspin = hardwareMap.get(CRServo.class, "rspin");
         lspin = hardwareMap.get(CRServo.class, "lspin");
+        feeder = hardwareMap.get(Servo.class, "gate");
 
-        trans1 = hardwareMap.get(DcMotor.class, "t1");
-        trans2 = hardwareMap.get(DcMotor.class, "t2");
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
         // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
         // Note: The settings here assume direct drive on left and right wheels.  Gear Reduction or 90 Deg drives may require direction flips
@@ -137,6 +136,7 @@ public class MainOpMode extends LinearOpMode
         intake.setDirection(DcMotor.Direction.REVERSE);
         rspin.setDirection(CRServo.Direction.FORWARD);
         lspin.setDirection(CRServo.Direction.FORWARD);
+        feeder.setDirection(Servo.Direction.FORWARD);
 
         setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
 
@@ -174,27 +174,26 @@ public class MainOpMode extends LinearOpMode
                 lastTime = runtime.milliseconds();
             }
 
-            if(gamepad1.dpad_right && !right1Pressed) {
+            //carousel
+            if(gamepad1.dpad_right) {
                 lspin.setPower(1); rspin.setPower(1);
             }
-            else if(gamepad1.dpad_left && !left1Pressed) {
+            else if(gamepad1.dpad_left) {
                 lspin.setPower(-1); rspin.setPower(-1);
             }
             else {
                 lspin.setPower(0); rspin.setPower(0);
             }
 
-            //Transfer temp
-            if (gamepad1.b && !b1Pressed) {
-                transOn = !transOn;
-            }
-            if (transOn) {
-                trans1.setPower(1);
-                trans2.setPower(1);
-            }
-            else {
-                trans1.setPower(0);
-                trans2.setPower(0);
+            //gate
+            if(gamepad1.dpad_up && !up1Pressed){
+                feederUp = !feederUp;
+                if(feederUp){
+                    feeder.setPosition(1);
+                }
+                else{
+                    feeder.setPosition(0);
+                }
             }
 
             // Intake
@@ -288,6 +287,7 @@ public class MainOpMode extends LinearOpMode
             telemetry.addData("Status", "Run Time: " + runtime.toString());
             telemetry.addData("Fly state", flyOn);
             telemetry.addData("Fly power", flySpeed);
+            telemetry.addData("Feeder Up",feederUp);
             telemetry.update();
 
             sleep(10);
