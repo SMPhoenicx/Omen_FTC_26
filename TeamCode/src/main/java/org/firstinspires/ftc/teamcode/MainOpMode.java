@@ -139,6 +139,7 @@ public class MainOpMode extends LinearOpMode
         feeder.setDirection(Servo.Direction.FORWARD);
 
         setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
+        feeder.setPosition(1);
 
         // Wait for driver to press start
         telemetry.addData("Camera preview on/off", "3 dots, Camera Stream");
@@ -189,10 +190,11 @@ public class MainOpMode extends LinearOpMode
             if(gamepad1.dpad_up && !up1Pressed){
                 feederUp = !feederUp;
                 if(feederUp){
-                    feeder.setPosition(1);
+                    feeder.setPosition(0);
                 }
                 else{
-                    feeder.setPosition(0);
+                    feeder.setPosition(1);
+//                    System.out.println("67");
                 }
             }
 
