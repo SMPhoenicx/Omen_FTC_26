@@ -58,139 +58,71 @@ public class FaceGoalOpMode extends LinearOpMode
 {
     final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
     final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
-
     private ElapsedTime runtime = new ElapsedTime();
+
+    // HARDWARE DECLARATIONS
     private DcMotor frontLeftDrive = null;  //  Used to control the left front drive wheel
     private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
     private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
     private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
-    private DcMotor fly1 = null;
-    private DcMotor fly2 = null;
-    private DcMotor intake = null;
-    private CRServo rspin = null;
-    private CRServo lspin = null;
+
+    // CAMERA VARS
     private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
     private VisionPortal visionPortal;               // Used to manage the video source.
     private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
     private AprilTagDetection desiredTag;
     private boolean facingGoal = false;
+
+    //CAM PREDICTIONS
+    private double lastKnownBearing = 0;
+    private double lastKnownRange = 0;
+    private long lastDetectionTime = 0;
+    private static final long PREDICTION_TIMEOUT = 500;
+
     @Override public void runOpMode()
     {
+        //CAMERA VARS
         boolean targetFound     = false;
+
+        //DRIVE VARS
         double  drive           = 0;
         double  strafe          = 0;
         double  turn            = 0;
-        double flySpeed = 0;
-        boolean flyOn = false;
-        double lastTime = 0;
-        boolean transOn = false;
 
-        boolean lb1Pressed = false;
-        boolean rb1Pressed = false;
-        boolean b1Pressed = false;
-        boolean a1Pressed = false;
-        boolean x1Pressed = false;
-        boolean y1Pressed = false;
+        //CONTROL VARS
         boolean down1Pressed = false;
-        boolean up1Pressed = false;
-        boolean right1Pressed = false;
-        boolean left1Pressed = false;
-
-        boolean lb2Pressed = false;
-        boolean rb2Pressed = false;
-        boolean b2Pressed = false;
-        boolean a2Pressed = false;
-        boolean x2Pressed = false;
-        boolean y2Pressed = false;
-        boolean down2Pressed = false;
-        boolean up2Pressed = false;
-        boolean right2Pressed = false;
-        boolean left2Pressed = false;
         // Initialize the Apriltag Detection process
         initAprilTag();
 
-        // Initialize the hardware variables. Note that the strings used here as parameters
-        // to 'get' must match the names assigned during the robot configuration.
-        // step (using the FTC Robot Controller app on the phone).
+        //HARDWARE MAPS
         frontLeftDrive = hardwareMap.get(DcMotor.class, "fl");
         frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
-        fly1 = hardwareMap.get(DcMotor.class, "fly1");
-        fly2 = hardwareMap.get(DcMotor.class, "fly2");
-        intake = hardwareMap.get(DcMotor.class, "in");
-        rspin = hardwareMap.get(CRServo.class, "rspin");
-        lspin = hardwareMap.get(CRServo.class, "lspin");
-        // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
-        // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
-        // Note: The settings here assume direct drive on left and right wheels.  Gear Reduction or 90 Deg drives may require direction flips
+
+        //DIRECTIONS
         frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
-        intake.setDirection(DcMotor.Direction.REVERSE);
-        rspin.setDirection(CRServo.Direction.FORWARD);
-        lspin.setDirection(CRServo.Direction.FORWARD);
 
-        setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
+        //INIT ACTIONS
+        setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
 
-        // Wait for driver to press start
+        //INIT TELEMETRY
         telemetry.addData("Camera preview on/off", "3 dots, Camera Stream");
         telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
+
+        //WAIT
         waitForStart();
         runtime.reset();
 
         while (opModeIsActive())
         {
+            //CAMERA VARS
             targetFound = false;
             desiredTag  = null;
-
-            //flywheel
-            if(gamepad1.a && !a1Pressed)  {
-                flyOn = !flyOn;
-                flySpeed = 0.5;
-            }
-            if(flyOn) {
-                fly1.setPower(flySpeed);
-                fly2.setPower(flySpeed);
-            }
-            else {
-                fly2.setPower(0);
-                fly2.setPower(0);
-            }
-            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed += (flySpeed < 1)? 0.05:0;
-                lastTime = runtime.milliseconds();
-            }
-            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed -= (flySpeed > 0)? 0.05:0;
-                lastTime = runtime.milliseconds();
-            }
-
-            if(gamepad1.dpad_right && !right1Pressed) {
-                lspin.setPower(1); rspin.setPower(1);
-            }
-            else if(gamepad1.dpad_left && !left1Pressed) {
-                lspin.setPower(-1); rspin.setPower(-1);
-            }
-            else {
-                lspin.setPower(0); rspin.setPower(0);
-            }
-
-            // Intake
-
-            if(gamepad1.right_bumper && !rb1Pressed) {
-                if(intake.getPower() <= 0) intake.setPower(1);
-                else intake.setPower(0);
-            }
-
-            //Outtake
-            if(gamepad1.left_bumper && !lb1Pressed) {
-                intake.setPower(-0.6);
-            }
 
             // Step through the list of detected tags and look for a matching tag
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
@@ -213,8 +145,9 @@ public class FaceGoalOpMode extends LinearOpMode
                 }
             }
 
-            // Tell the driver what we see, and what to do.
+            // CAMERA INFO
             if (targetFound) {
+                adjustDecimation(desiredTag.ftcPose.range);
                 telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
                 telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
                 telemetry.addData("Range",  "%5.1f inches", desiredTag.ftcPose.range);
@@ -226,57 +159,63 @@ public class FaceGoalOpMode extends LinearOpMode
                 facingGoal = !facingGoal;
             }
 
-            // If Left Bumper is being pressed, AND we have found the desired target, Turn to face target Automatically.
-            if (facingGoal && targetFound) {
+            //FACE GOAL
+           if (facingGoal) {
+               if (targetFound) {
+                   lastKnownBearing = desiredTag.ftcPose.bearing;
+                   lastKnownRange = desiredTag.ftcPose.range;
+                   lastDetectionTime = System.currentTimeMillis();
 
-                // Heading error: angle left/right of camera center
-                double headingError = desiredTag.ftcPose.bearing;
+                   double headingError = desiredTag.ftcPose.bearing;
 
-                // Apply proportional gain to generate turn power
-                turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                    if (Math.abs(headingError) < 2.0) {
+                        turn = 0;
+                    } else {
+                        turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                    }
 
-                // Zero out drive/strafe so it only rotates
-                drive = 0;
-                strafe = 0;
+                   telemetry.addData("Tracking", "LIVE");
+                }
+               else {
+                   //TRYING TO PREVENT A LOT OF TRACKING LOSS
+                   long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
 
-                telemetry.addData("Auto", "Turn %5.2f (headingErr %3.0f°)", turn, headingError);
+                   if (timeSinceLost < PREDICTION_TIMEOUT) {
+                       // Continue tracking last known bearing
+                       double headingError = lastKnownBearing;
 
-            }else{
+                       if (Math.abs(headingError) < 2.0) {
+                           turn = 0;
+                       } else {
+                           turn = Range.clip(headingError * -TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                       }
+
+                       telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
+                   } else {
+                       // Lost for too long, stop auto-turning
+                       turn = 0;
+                       telemetry.addData("Tracking", "LOST");
+                   }
+               }
+            }
+            else{
                 turn   = -gamepad1.right_stick_x;
             }
-            // Manual control
-            drive  = -gamepad1.left_stick_y;
+            //MANUAL
+            drive = -gamepad1.left_stick_y;
             strafe = -gamepad1.left_stick_x;
 
-            // Apply desired axes motions to the drivetrain.
+            //DRIVE
             moveRobot(drive, strafe, turn);
 
-            b1Pressed = gamepad1.b;
-            a1Pressed = gamepad1.a;
-            x1Pressed = gamepad1.x;
-            y1Pressed = gamepad1.y;
+            //CONTROL RESETS
             down1Pressed = gamepad1.dpad_down;
-            up1Pressed = gamepad1.dpad_up;
-            left1Pressed = gamepad1.dpad_left;
-            right1Pressed = gamepad1.dpad_right;
-            lb1Pressed = gamepad1.left_bumper;
-            rb1Pressed = gamepad1.right_bumper;
 
-            b2Pressed = gamepad2.b;
-            a2Pressed = gamepad2.a;
-            x2Pressed = gamepad2.x;
-            y2Pressed = gamepad2.y;
-            down2Pressed = gamepad2.dpad_down;
-            up2Pressed = gamepad2.dpad_up;
-            left2Pressed = gamepad2.dpad_left;
-            right2Pressed = gamepad2.dpad_right;
-            lb2Pressed = gamepad2.left_bumper;
-            rb2Pressed = gamepad2.right_bumper;
+            //TELEMETRY
             telemetry.addData("Status", "Run Time: " + runtime.toString());
-            telemetry.addData("Fly state", flyOn);
-            telemetry.addData("Fly power", flySpeed);
             telemetry.update();
 
+            //hmmmm
             sleep(10);
         }
     }
@@ -336,7 +275,7 @@ public class FaceGoalOpMode extends LinearOpMode
         // Decimation = 3 ..  Detect 2" Tag from 4  feet away at 30 Frames Per Second (default)
         // Decimation = 3 ..  Detect 5" Tag from 10 feet away at 30 Frames Per Second (default)
         // Note: Decimation can be changed on-the-fly to adapt during a match.
-        aprilTag.setDecimation(3);
+        aprilTag.setDecimation(4);
 
         // Create the vision portal by using a builder.
         visionPortal = new VisionPortal.Builder()
@@ -383,5 +322,22 @@ public class FaceGoalOpMode extends LinearOpMode
             gainControl.setGain(gain);
             sleep(20);
         }
+    }
+
+    // Add this method to your class
+    private void adjustDecimation(double range) {
+        int newDecimation;
+
+        if (range > 90) {
+            newDecimation = 3;
+        } else if (range > 50) {
+            newDecimation = 3;
+        } else {
+            newDecimation = 4;
+        }
+
+        aprilTag.setDecimation(newDecimation);
+        telemetry.addData("Decimation: ", "%d", newDecimation);
+
     }
 }

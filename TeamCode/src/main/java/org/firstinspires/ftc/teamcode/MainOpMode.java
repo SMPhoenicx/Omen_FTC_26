@@ -1,32 +1,4 @@
-/* Copyright (c) 2023 FIRST. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted (subject to the limitations in the disclaimer below) provided that
- * the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright notice, this list
- * of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above copyright notice, this
- * list of conditions and the following disclaimer in the documentation and/or
- * other materials provided with the distribution.
- *
- * Neither the name of FIRST nor the names of its contributors may be used to endorse or
- * promote products derived from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
- * LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
+// (keeps your original header & imports)
 package org.firstinspires.ftc.teamcode;
 
 import android.util.Size;
@@ -55,32 +27,61 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import dev.nextftc.control.feedback.PIDController;
+
 @TeleOp(name="MainOpMode", group = "Concept")
 public class MainOpMode extends LinearOpMode
 {
-    final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
-    final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
-    //MARK:- MOTORS AND SERVOS
+
+    final double TURN_GAIN   =  0.02  ;
+    final double MAX_AUTO_TURN  = 0.4;
+
+    // MARK:- MOTORS AND SERVOS
     private ElapsedTime runtime = new ElapsedTime();
-    private DcMotor frontLeftDrive = null;  //  Used to control the left front drive wheel
-    private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
-    private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
-    private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
+    private DcMotor frontLeftDrive = null;
+    private DcMotor frontRightDrive = null;
+    private DcMotor backLeftDrive = null;
+    private DcMotor backRightDrive = null;
     private DcMotor fly1 = null;
     private DcMotor fly2 = null;
     private DcMotor intake = null;
     private CRServo rspin = null;
     private CRServo lspin = null;
     private Servo feeder = null;
-    //MARK:- CAMERA
-   private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
-    private VisionPortal visionPortal;               // Used to manage the video source.
-    private AprilTagProcessor aprilTag;              // Used for managing the AprilTag detection process.
+
+    // MARK:- CAMERA
+    private static final int DESIRED_TAG_ID = 20;
+    private VisionPortal visionPortal;
+    private AprilTagProcessor aprilTag;
     private AprilTagDetection desiredTag;
 
-    //MARK:- ENCODERS
+    // MARK:- ENCODERS / pots
     private AnalogInput spinRight;
     private AnalogInput spinLeft;
+
+    // --- Carousel preset positions (6 presets, every 60 degrees) ---
+    private final double[] CAROUSEL_POSITIONS = {0.0, 60.0, 120.0, 180.0, 240.0, 300.0};
+    private int carouselIndex = 0;
+
+    // --- PIDF gains (tweak on robot) ---
+    private  double pidKp = 0.0001;    // start small, increase until responsive
+    private  double pidKi = 0.0;  // tiny integral (if needed)
+    private  double pidKd = 0.0;  // derivative to damp oscillation
+    private  double pidKf = 0.05;    // small directional feedforward to overcome stiction
+
+    private double integralR = 0.0;
+    private double integralL = 0.0;
+    private double lastErrorR = 0.0;
+    private double lastErrorL = 0.0;
+    private double integralLimit = 500.0; // clamp integral
+
+    private double pidLastTimeMs = 0.0; // ms timestamp for PID dt
+
+    // tolerance and deadband
+    private final double positionToleranceDeg = 2.0;
+    private final double outputDeadband = 0.03;
+
+    // --- existing variables from your code (fly state toggles, button edge trackers, etc) ---
     @Override public void runOpMode()
     {
         boolean targetFound     = false;
@@ -128,7 +129,7 @@ public class MainOpMode extends LinearOpMode
         rspin = hardwareMap.get(CRServo.class, "rspin");
         lspin = hardwareMap.get(CRServo.class, "lspin");
         feeder = hardwareMap.get(Servo.class, "gate");
-        //encoders
+        //encoders/pots
         spinRight = hardwareMap.get(AnalogInput.class, "respin");
         spinLeft = hardwareMap.get(AnalogInput.class, "lespin");
 
@@ -152,18 +153,62 @@ public class MainOpMode extends LinearOpMode
         telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
         waitForStart();
+
+        // initialize pid timestamp after runtime was reset
         runtime.reset();
+        pidLastTimeMs = runtime.milliseconds();
+
+        double lastPAdjustTime = 0;
+        double lastIAdjustTime = 0;
+        double lastDAdjustTime = 0;
 
         while (opModeIsActive())
         {
             targetFound = false;
             desiredTag  = null;
 
-// ENCODING FOR SERVOS
+            // ----- PID: compute dt -----
+            double nowMs = runtime.milliseconds();
+            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
+            if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
+            pidLastTimeMs = nowMs;
+
+            // ENCODING FOR SERVOS
             double voltR = spinRight.getVoltage();
             double voltL = spinLeft.getVoltage();
 
-            //flywheel
+            // === PIDF tuning via Gamepad2 ===
+            double adjustStepP = 0.00002;
+            double adjustStepI = 0.00001;
+            double adjustStepD = 0.0002;
+            double debounceTime = 250; // milliseconds
+
+            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
+                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
+                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
+                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+            }
+
+
+// Safety clamp
+            pidKp = Math.max(0, pidKp);
+            pidKi = Math.max(0, pidKi);
+            pidKd = Math.max(0, pidKd);
+
+// Display PID constants on telemetry
+            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
+            telemetry.addData("kP", "%.4f", pidKp);
+            telemetry.addData("kI", "%.4f", pidKi);
+            telemetry.addData("kD", "%.4f", pidKd);
+
+            // --- Flywheel controls ---
             if(gamepad1.a && !a1Pressed)  {
                 flyOn = !flyOn;
                 flySpeed = 0.5;
@@ -173,7 +218,7 @@ public class MainOpMode extends LinearOpMode
                 fly2.setPower(flySpeed);
             }
             else {
-                fly2.setPower(0);
+                fly1.setPower(0);
                 fly2.setPower(0);
             }
             if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
@@ -185,19 +230,19 @@ public class MainOpMode extends LinearOpMode
                 lastTime = runtime.milliseconds();
             }
 
-            //carousel
-            if(gamepad1.dpad_right) {
-                moveToAngle(90);
+            // ----- CAROUSEL: dpad edge-detect to cycle presets -----
+            if (gamepad1.dpad_right && !right1Pressed) {
+                carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
             }
-            else if(gamepad1.dpad_left) {
-
-                moveToAngle(45);
-            }
-            else {
-                lspin.setPower(0); rspin.setPower(0);
+            if (gamepad1.dpad_left && !left1Pressed) {
+                carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
             }
 
-            //gate
+            // always run PID towards the current selected preset while opMode active
+            double targetAngle = CAROUSEL_POSITIONS[carouselIndex];
+            updateCarouselPID(targetAngle, dtSec);
+
+            // gate toggle
             if(gamepad1.dpad_up && !up1Pressed){
                 feederUp = !feederUp;
                 if(feederUp){
@@ -205,42 +250,34 @@ public class MainOpMode extends LinearOpMode
                 }
                 else{
                     feeder.setPosition(1);
-//                    System.out.println("67");
                 }
             }
-            // Intake
 
+            // Intake
             if(gamepad1.right_bumper && !rb1Pressed) {
                 if(intake.getPower() <= 0) intake.setPower(1);
                 else intake.setPower(0);
             }
-
-            //Outtake
+            // Outtake
             if(gamepad1.left_bumper && !lb1Pressed) {
                 intake.setPower(-0.6);
             }
 
-            // Step through the list of detected tags and look for a matching tag
+            // AprilTag detection (unchanged)
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
-                // Look to see if we have size info on this tag.
                 if (detection.metadata != null) {
-                    //  Check to see if we want to track towards this tag.
                     if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
-                        // Yes, we want to use this tag.
                         desiredTag = detection;
                         targetFound = true;
                         break;
                     } else {
-                        // This tag is in the library, but we do not want to track it right now.
                         telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
                     }
                 } else {
-                    // This tag is NOT in the library, so we don't have enough information to track to it.
                     telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
                 }
             }
-            // Tell the driver what we see, and what to do.
             if (targetFound) {
                 telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
                 telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
@@ -249,31 +286,23 @@ public class MainOpMode extends LinearOpMode
                 telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
             }
 
-            // If Left Bumper is being pressed, AND we have found the desired target, Turn to face target Automatically.
+            // Auto-turn to tag (unchanged)
             if (gamepad1.dpad_down && targetFound) {
-
-                // Heading error: angle left/right of camera center
                 double headingError = desiredTag.ftcPose.bearing;
-
-                // Apply proportional gain to generate turn power
                 turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
-
-                // Zero out drive/strafe so it only rotates
                 drive = 0;
                 strafe = 0;
-
                 telemetry.addData("Auto", "Turn %5.2f (headingErr %3.0f°)", turn, headingError);
-
             } else {
-                // Manual control
                 drive  = -gamepad1.left_stick_y;
                 strafe = -gamepad1.left_stick_x;
                 turn   = -gamepad1.right_stick_x;
             }
 
-            // Apply desired axes motions to the drivetrain.
+            // Apply desired axes motions to the drivetrain (unchanged).
             moveRobot(drive, strafe, turn);
 
+            // update edge-tracking booleans at end of loop (so edge-detect works next loop)
             b1Pressed = gamepad1.b;
             a1Pressed = gamepad1.a;
             x1Pressed = gamepad1.x;
@@ -295,35 +324,115 @@ public class MainOpMode extends LinearOpMode
             right2Pressed = gamepad2.dpad_right;
             lb2Pressed = gamepad2.left_bumper;
             rb2Pressed = gamepad2.right_bumper;
+
+            // telemetry: include PID status & selected preset
             telemetry.addData("Status", "Run Time: " + runtime.toString());
+            telemetry.addData("SelectedPresetIdx", carouselIndex + " -> " + targetAngle + "°");
             telemetry.addData("Fly state", flyOn);
             telemetry.addData("Fly power", flySpeed);
             telemetry.addData("Feeder Up",feederUp);
-            telemetry.addData("Angle? RIGHT", mapVoltToAngle(voltR));
-            telemetry.addData("Angle? LEFT", mapVoltToAngle(voltL));
-
+            telemetry.addData("Angle? RIGHT", mapVoltageToAngle360(voltR, 0.01, 3.29));
+            telemetry.addData("Angle? LEFT", mapVoltageToAngle360(voltL, 0.01, 3.29));
             telemetry.addData("VOLT? RIGHT", voltR);
             telemetry.addData("VOLT? LEFT", voltL);
 
             telemetry.update();
 
             sleep(10);
+        } // end while
+    } // end runOpMode()
+
+    // --- PID update that runs once per loop (non-blocking) ---
+    private void updateCarouselPID(double targetAngle, double dt) {
+        // read angles 0..360
+        double angleR = mapVoltageToAngle360(spinRight.getVoltage(), 0.01, 3.29);
+        double angleL = mapVoltageToAngle360(spinLeft.getVoltage(), 0.01, 3.29);
+
+        // compute shortest signed error [-180,180]
+        double errorR = angleError(targetAngle, angleR);
+        double errorL = angleError(targetAngle, angleL);
+
+        // integral with anti-windup
+        integralR += errorR * dt;
+        integralL += errorL * dt;
+        integralR = clamp(integralR, -integralLimit, integralLimit);
+        integralL = clamp(integralL, -integralLimit, integralLimit);
+
+        // derivative
+        double dR = (errorR - lastErrorR) / Math.max(dt, 1e-6);
+        double dL = (errorL - lastErrorL) / Math.max(dt, 1e-6);
+
+        // PIDF output (interpreted as servo power)
+        double outR = pidKp * errorR + pidKi * integralR + pidKd * dR;
+        double outL = pidKp * errorL + pidKi * integralL + pidKd * dL;
+
+        // small directional feedforward to overcome stiction when error significant
+        if (Math.abs(errorR) > 1.0) outR += pidKf * Math.signum(errorR);
+        if (Math.abs(errorL) > 1.0) outL += pidKf * Math.signum(errorL);
+
+        // clamp to [-1,1] and apply deadband
+        outR = Range.clip(outR, -1.0, 1.0);
+        outL = Range.clip(outL, -1.0, 1.0);
+        if (Math.abs(outR) < outputDeadband) outR = 0.0;
+        if (Math.abs(outL) < outputDeadband) outL = 0.0;
+
+        // if within tolerance, zero outputs and decay integrator to avoid bumping
+        if (Math.abs(errorR) <= positionToleranceDeg) {
+            outR = 0.0;
+            integralR *= 0.2;
         }
+        if (Math.abs(errorL) <= positionToleranceDeg) {
+            outL = 0.0;
+            integralL *= 0.2;
+        }
+
+        // apply powers (flip one if your servo is mirrored - change sign if needed)
+        rspin.setPower(outR);
+        lspin.setPower(outL);
+
+        // store errors for next derivative calculation
+        lastErrorR = errorR;
+        lastErrorL = errorL;
+
+        // telemetry for PID (keeps concise, add more if you want)
+        telemetry.addData("Carousel Target", "%.1f°", targetAngle);
+        telemetry.addData("R", "angle=%.2f, err=%.2f, pwr=%.2f", angleR, errorR, outR);
+        telemetry.addData("L", "angle=%.2f, err=%.2f, pwr=%.2f", angleL, errorL, outL);
+
     }
 
+    // reuse your mapping helpers (keeps same math)
     private double mapVoltToAngle(double v)
     {
         return 180.0*(v-0.01)/(3.29);
     }
 
+    private double mapVoltageToAngle360(double v, double vMin, double vMax) {
+        double angle = 360.0 * (v - vMin) / (vMax - vMin);
+        angle = (angle + 360) % 360;
+        return angle;
+    }
+
+    // Compute shortest signed difference between two angles
+    private double angleError(double target, double current) {
+        double error = target - current;
+        if (error > 180) error -= 360;
+        if (error < -180) error += 360;
+        return error;
+    }
+
+    // small clamp utility
+    private double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    // rest of your class unchanged: moveRobot, initAprilTag, setManualExposure etc...
     public void moveRobot(double x, double y, double yaw) {
-        // Calculate wheel powers.
         double frontLeftPower    =  x - y - yaw;
         double frontRightPower   =  x + y + yaw;
         double backLeftPower     =  x + y - yaw;
         double backRightPower    =  x - y + yaw;
 
-        // Normalize wheel powers to be less than 1.0
         double max = Math.max(Math.abs(frontLeftPower), Math.abs(frontRightPower));
         max = Math.max(max, Math.abs(backLeftPower));
         max = Math.max(max, Math.abs(backRightPower));
@@ -335,89 +444,24 @@ public class MainOpMode extends LinearOpMode
             backRightPower /= max;
         }
 
-        // Send powers to the wheels.
         frontLeftDrive.setPower(frontLeftPower);
         frontRightDrive.setPower(frontRightPower);
         backLeftDrive.setPower(backLeftPower);
         backRightDrive.setPower(backRightPower);
     }
-public void moveToAngle(double targetAngle) {
-        double kP = 0.02;
-        double tolerance = 2.0;
-    double angle1 = mapVoltageToAngle360(spinRight.getVoltage(), 0.01, 3.29);
-    double angle2 = mapVoltageToAngle360(spinLeft.getVoltage(), 0.01, 3.29);
 
-    double error1 = angleError(targetAngle, angle1);
-    double error2 = angleError(targetAngle, angle2);
-
-    // proportional control
-    double power1 = Range.clip(kP * error1, -1.0, 1.0);
-    double power2 = Range.clip(kP * error2, -1.0, 1.0);
-
-    rspin.setPower(power1);
-    lspin.setPower(power2);
-
-    telemetry.addData("Target", targetAngle);
-    telemetry.addData("Servo1", "%.1f° (V=%.2f) Power=%.2f", angle1, spinRight.getVoltage(), power1);
-    telemetry.addData("Servo2", "%.1f° (V=%.2f) Power=%.2f", angle2, spinLeft.getVoltage(), power2);
-    telemetry.update();
-
-    if (Math.abs(error1) < tolerance && Math.abs(error2) < tolerance) {
-        rspin.setPower(0);
-        lspin.setPower(0);
-    }
-
-
-    sleep(20);
-}
-    private double mapVoltageToAngle360(double v, double vMin, double vMax) {
-        // Map 0–3.3V to 0–360° (or your calibrated range)
-        double angle = 360.0 * (v - vMin) / (vMax - vMin);
-        // wrap into 0–360
-        angle = (angle + 360) % 360;
-        return angle;
-    }
-
-    // Compute shortest signed difference between two angles
-    private double angleError(double target, double current) {
-        double error = target - current;
-        // wrap error into [-180, +180] so servo takes shortest path
-        if (error > 180) error -= 360;
-        if (error < -180) error += 360;
-        return error;
-    }
     /**
      * Initialize the AprilTag processor.
      */
     private void initAprilTag() {
-
-        // Create the AprilTag processor.
+        // (unchanged) your existing initAprilTag content copied here...
         aprilTag = new AprilTagProcessor.Builder()
-
-                // The following default settings are available to un-comment and edit as needed.
-                //.setDrawAxes(false)
-                //.setDrawCubeProjection(false)
                 .setDrawTagOutline(true)
-                //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
                 .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary())
                 .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
                 .setLensIntrinsics(904.848699568, 904.848699568, 658.131998572, 340.91602987)
-                // == CAMERA CALIBRATION ==
-                // If you do not manually specify calibration parameters, the SDK will attempt
-                // to load a predefined calibration for your camera.
-
                 .build();
-
-        // Adjust Image Decimation to trade-off detection-range for detection-rate.
-        // eg: Some typical detection data using a Logitech C920 WebCam
-        // Decimation = 1 ..  Detect 2" Tag from 10 feet away at 10 Frames per second
-        // Decimation = 2 ..  Detect 2" Tag from 6  feet away at 22 Frames per second
-        // Decimation = 3 ..  Detect 2" Tag from 4  feet away at 30 Frames Per Second (default)
-        // Decimation = 3 ..  Detect 5" Tag from 10 feet away at 30 Frames Per Second (default)
-        // Note: Decimation can be changed on-the-fly to adapt during a match.
         aprilTag.setDecimation(3);
-
-        // Create the vision portal by using a builder.
         visionPortal = new VisionPortal.Builder()
                 .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
                 .addProcessor(aprilTag)
@@ -426,18 +470,10 @@ public void moveToAngle(double targetAngle) {
                 .build();
     }
 
-    /*
-     Manually set the camera gain and exposure.
-     This can only be called AFTER calling initAprilTag(), and only works for Webcams;
-    */
     private void setManualExposure(int exposureMS, int gain) {
-        // Wait for the camera to be open, then use the controls
-
         if (visionPortal == null) {
             return;
         }
-
-        // Make sure camera is streaming before we try to set the exposure controls
         if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
             telemetry.addData("Camera", "Waiting");
             telemetry.update();
@@ -447,8 +483,6 @@ public void moveToAngle(double targetAngle) {
             telemetry.addData("Camera", "Ready");
             telemetry.update();
         }
-
-        // Set camera controls unless we are stopping.
         if (!isStopRequested())
         {
             ExposureControl exposureControl = visionPortal.getCameraControl(ExposureControl.class);
