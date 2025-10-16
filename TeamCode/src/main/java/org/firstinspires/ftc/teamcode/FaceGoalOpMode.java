@@ -56,8 +56,6 @@ import java.util.concurrent.TimeUnit;
 @TeleOp(name="FacingGoalOpMode", group = "Concept")
 public class FaceGoalOpMode extends LinearOpMode
 {
-    final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
-    final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
     private ElapsedTime runtime = new ElapsedTime();
 
     // HARDWARE DECLARATIONS
@@ -79,6 +77,14 @@ public class FaceGoalOpMode extends LinearOpMode
     private long lastDetectionTime = 0;
     private static final long PREDICTION_TIMEOUT = 500;
 
+    private double lastHeadingError = 0;
+    private ElapsedTime pidTimer = new ElapsedTime();
+
+    double TURN_P = 0.002;  // Proportional gain
+    double TURN_D = 0.002;  // Derivative gain (start small and increase)
+    final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
+    final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
+
     @Override public void runOpMode()
     {
         //CAMERA VARS
@@ -91,6 +97,10 @@ public class FaceGoalOpMode extends LinearOpMode
 
         //CONTROL VARS
         boolean down1Pressed = false;
+        boolean right1Pressed = false;
+        boolean left1Pressed = false;
+        boolean a1Pressed = false;
+        boolean b1Pressed = false;
         // Initialize the Apriltag Detection process
         initAprilTag();
 
@@ -124,6 +134,21 @@ public class FaceGoalOpMode extends LinearOpMode
             targetFound = false;
             desiredTag  = null;
 
+//            final double TURN_P = 0.035;  // Proportional gain
+//            final double TURN_D = 0.0;
+            if(gamepad1.dpad_right && !right1Pressed) {
+                TURN_P += 0.001;
+            }
+            if(gamepad1.dpad_left && !left1Pressed) {
+                TURN_P -= TURN_P > 0 ? 0.001:0;
+            }
+            if(gamepad1.a && !a1Pressed) {
+                TURN_D += 0.0002;
+            }
+            if(gamepad1.b && !b1Pressed) {
+                TURN_D -= TURN_D > 0 ? 0.0002:0;
+            }
+            telemetry.addData("Tracking", "LIVE (prop: %.5f°, deriv: %.5f)", TURN_P, TURN_D);
             // Step through the list of detected tags and look for a matching tag
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
@@ -168,13 +193,19 @@ public class FaceGoalOpMode extends LinearOpMode
 
                    double headingError = desiredTag.ftcPose.bearing;
 
+                   double deltaTime = pidTimer.seconds();
+                   double derivative = (headingError - lastHeadingError) / deltaTime;
+                   pidTimer.reset();
+
                     if (Math.abs(headingError) < 2.0) {
                         turn = 0;
                     } else {
                         turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
                     }
 
-                   telemetry.addData("Tracking", "LIVE");
+                   lastHeadingError = headingError;
+
+                   telemetry.addData("Tracking", "LIVE (err: %.1f°, deriv: %.2f)", headingError, derivative);
                 }
                else {
                    //TRYING TO PREVENT A LOT OF TRACKING LOSS
@@ -184,22 +215,32 @@ public class FaceGoalOpMode extends LinearOpMode
                        // Continue tracking last known bearing
                        double headingError = lastKnownBearing;
 
+                       double deltaTime = pidTimer.seconds();
+                       double derivative = (headingError - lastHeadingError) / deltaTime;
+                       pidTimer.reset();
+
                        if (Math.abs(headingError) < 2.0) {
                            turn = 0;
                        } else {
-                           turn = Range.clip(headingError * -TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                           turn = (TURN_P * headingError) + (TURN_D * derivative);
+                           turn = Range.clip(turn * -1, -MAX_AUTO_TURN, MAX_AUTO_TURN);
                        }
+
+                       lastHeadingError = headingError;
 
                        telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
                    } else {
-                       // Lost for too long, stop auto-turning
                        turn = 0;
+                       lastHeadingError = 0;
+                       pidTimer.reset();
                        telemetry.addData("Tracking", "LOST");
                    }
                }
             }
             else{
                 turn   = -gamepad1.right_stick_x;
+                lastHeadingError = 0;
+                pidTimer.reset();
             }
             //MANUAL
             drive = -gamepad1.left_stick_y;
@@ -210,6 +251,10 @@ public class FaceGoalOpMode extends LinearOpMode
 
             //CONTROL RESETS
             down1Pressed = gamepad1.dpad_down;
+            right1Pressed = gamepad1.dpad_right;
+            left1Pressed = gamepad1.dpad_left;
+            a1Pressed = gamepad1.a;
+            b1Pressed = gamepad1.b;
 
             //TELEMETRY
             telemetry.addData("Status", "Run Time: " + runtime.toString());
