@@ -51,8 +51,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@TeleOp(name="MainOpMode", group = "Concept")
-public class MainOpMode extends LinearOpMode
+@TeleOp(name="OtherOpMode", group = "Concept")
+public class OtherOpMode extends LinearOpMode
 {
     final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
     final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
@@ -89,6 +89,24 @@ public class MainOpMode extends LinearOpMode
     double[] prevFlySpeeds2 = new double[100];
     double flyLedTolerance = 0.25;
     ElapsedTime flyTimer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+
+    //FLYWHEEL PID STUFF
+    private  double pidKp = 0.5;    // start small, increase until responsive
+    private  double pidKi = 0.0;  // tiny integral (if needed)
+    private  double pidKd = 0.0;  // derivative to damp oscillation
+    private  double pidKf = 0.05;    // small directional feedforward to overcome stiction
+    private double integral1 = 0.0;
+    private double integral2 = 0.0;
+    private double lastError1 = 0.0;
+    private double lastError2 = 0.0;
+    private double integralLimit = 500.0; // clamp integral
+    private double pidLastTimeMs = 0.0; // ms timestamp for PID dt
+    // tolerance and deadband
+    private final double positionToleranceDeg = 0.2;
+    private final double outputDeadband = 0.03;
+    double lastPAdjustTime = 0;
+    double lastIAdjustTime = 0;
+    double lastDAdjustTime = 0;
 
     @Override public void runOpMode()
     {
@@ -175,21 +193,57 @@ public class MainOpMode extends LinearOpMode
 
         while (opModeIsActive())
         {
+            //PID SMTH
+            double nowMs = runtime.milliseconds();
+            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
+            if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
+            pidLastTimeMs = nowMs;
+
+            // === PIDF tuning via Gamepad2 ===
+            double adjustStepP = 0.02;
+            double adjustStepI = 0.01;
+            double adjustStepD = 0.2;
+            double debounceTime = 250; // milliseconds
+
+            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
+                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
+                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
+                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+            }
+
+
+// Safety clamp
+            pidKp = Math.max(0, pidKp);
+            pidKi = Math.max(0, pidKi);
+            pidKd = Math.max(0, pidKd);
+
+// Display PID constants on telemetry
+            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
+            telemetry.addData("kP", "%.4f", pidKp);
+            telemetry.addData("kI", "%.4f", pidKi);
+            telemetry.addData("kD", "%.4f", pidKd);
+
             //FLYWHEEL CONTROLS
             if(gamepad1.a && !a1Pressed)  {
                 flyOn = !flyOn;
-                flySpeed = 0.5;
+                flySpeed = 1;
             }
             if(flyOn) {
-                fly1.setPower(flySpeed);
-                fly2.setPower(flySpeed);
+                updateFlywheelPID(flySpeed,dtSec);
             }
             else {
                 fly1.setPower(0);
                 fly2.setPower(0);
             }
             if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed += (flySpeed < 1)? 0.05:0;
+                flySpeed += (flySpeed < 2)? 0.05:0;
                 lastTime = runtime.milliseconds();
             }
             if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
@@ -290,13 +344,13 @@ public class MainOpMode extends LinearOpMode
             }
 
             //FACE GOAL
-           if (facingGoal) {
-               if (targetFound) {
-                   lastKnownBearing = desiredTag.ftcPose.bearing;
-                   lastKnownRange = desiredTag.ftcPose.range;
-                   lastDetectionTime = System.currentTimeMillis();
+            if (facingGoal) {
+                if (targetFound) {
+                    lastKnownBearing = desiredTag.ftcPose.bearing;
+                    lastKnownRange = desiredTag.ftcPose.range;
+                    lastDetectionTime = System.currentTimeMillis();
 
-                   double headingError = desiredTag.ftcPose.bearing;
+                    double headingError = desiredTag.ftcPose.bearing;
 
                     if (Math.abs(headingError) < 2.0) {
                         turn = 0;
@@ -304,29 +358,29 @@ public class MainOpMode extends LinearOpMode
                         turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
                     }
 
-                   telemetry.addData("Tracking", "LIVE");
+                    telemetry.addData("Tracking", "LIVE");
                 }
-               else {
-                   //TRYING TO PREVENT A LOT OF TRACKING LOSS
-                   long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
+                else {
+                    //TRYING TO PREVENT A LOT OF TRACKING LOSS
+                    long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
 
-                   if (timeSinceLost < PREDICTION_TIMEOUT) {
-                       // Continue tracking last known bearing
-                       double headingError = lastKnownBearing;
+                    if (timeSinceLost < PREDICTION_TIMEOUT) {
+                        // Continue tracking last known bearing
+                        double headingError = lastKnownBearing;
 
-                       if (Math.abs(headingError) < 2.0) {
-                           turn = 0;
-                       } else {
-                           turn = Range.clip(headingError * -TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
-                       }
+                        if (Math.abs(headingError) < 2.0) {
+                            turn = 0;
+                        } else {
+                            turn = Range.clip(headingError * -TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                        }
 
-                       telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
-                   } else {
-                       // Lost for too long, stop auto-turning
-                       turn = 0;
-                       telemetry.addData("Tracking", "LOST");
-                   }
-               }
+                        telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
+                    } else {
+                        // Lost for too long, stop auto-turning
+                        turn = 0;
+                        telemetry.addData("Tracking", "LOST");
+                    }
+                }
             }
             else{
                 turn   = -gamepad1.right_stick_x;
@@ -503,5 +557,66 @@ public class MainOpMode extends LinearOpMode
         double sum = 0;
         for (double n : arr) sum += Math.pow(n - mean, 2);
         return (Math.sqrt(sum / arr.length));
+    }
+
+    private void updateFlywheelPID(double targetSpeed, double dt) {
+        // read speed
+        double speed1 = prevFlySpeeds1[0];
+        double speed2 = prevFlySpeeds2[0];
+
+        // compute shortest signed error [-180,180]
+        double error1 = targetSpeed-speed1;
+        double error2 = targetSpeed-speed2;
+
+        // integral with anti-windup
+        integral1 += error1 * dt;
+        integral2 += error2 * dt;
+        integral1 = clamp(integral1, -integralLimit, integralLimit);
+        integral1 = clamp(integral2, -integralLimit, integralLimit);
+
+        // derivative
+        double d1 = (error1 - lastError1) / Math.max(dt, 1e-6);
+        double d2 = (error2 - lastError2) / Math.max(dt, 1e-6);
+
+        // PIDF output (interpreted as servo power)
+        double out1 = pidKp * error1 + pidKi * integral1 + pidKd * d1;
+        double out2 = pidKp * error2 + pidKi * integral2 + pidKd * d2;
+
+        // small directional feedforward to overcome stiction when error significant
+        if (Math.abs(error1) > 1.0) out1 += pidKf * Math.signum(error1);
+        if (Math.abs(error2) > 1.0) out2 += pidKf * Math.signum(error2);
+
+        // clamp to [-1,1] and apply deadband
+        out1 = Range.clip(out1, 0.0, 1.0);
+        out2 = Range.clip(out2, 0.0, 1.0);
+        if (Math.abs(out1) < outputDeadband) out1 = 0.0;
+        if (Math.abs(out2) < outputDeadband) out2 = 0.0;
+
+        // if within tolerance, zero outputs and decay integrator to avoid bumping
+        if (Math.abs(error1) <= positionToleranceDeg) {
+            out1 = 0.0;
+            integral1 *= 0.2;
+        }
+        if (Math.abs(error2) <= positionToleranceDeg) {
+            out2 = 0.0;
+            integral2 *= 0.2;
+        }
+
+        // apply powers (flip one if your servo is mirrored - change sign if needed)
+        fly1.setPower(out1);
+        fly2.setPower(out2);
+
+        // store errors for next derivative calculation
+        lastError1 = error1;
+        lastError2 = error2;
+
+        // telemetry for PID (keeps concise, add more if you want)
+        telemetry.addData("Flywheel Target", "%.1f", targetSpeed);
+        telemetry.addData("1", "speed=%.2f, err=%.2f, pwr=%.2f", speed1, error1, out1);
+        telemetry.addData("2", "speed=%.2f, err=%.2f, pwr=%.2f", speed2, error2, out2);
+    }
+    // small clamp utility
+    private double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
     }
 }
