@@ -380,7 +380,7 @@ public class MainOpMode extends LinearOpMode
             telemetry.addData("SelectedPresetIdx", carouselIndex + " -> " + targetAngle + "°");
             telemetry.addData("Fly state", flyOn);
             telemetry.addData("Fly power", flySpeed);
-            telemetry.addData("Actual fly speed","Wheel 1: %7.1 Wheel 2: %7.1", prevFlySpeeds1[0],prevFlySpeeds2[0]);
+            telemetry.addData("Actual fly speed","Wheel 1: %.1f Wheel 2: %.1f", prevFlySpeeds1[0], prevFlySpeeds2[0]);
             telemetry.addData("Fly at correct power", flyAtSpeed);
             telemetry.addData("Feeder Up",feederUp);
             telemetry.addData("Angle? RIGHT", mapVoltageToAngle360(voltR, 0.01, 3.29));
