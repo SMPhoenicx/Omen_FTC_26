@@ -48,6 +48,7 @@ public class MainOpMode extends LinearOpMode
     private CRServo rspin = null;
     private CRServo lspin = null;
     private Servo feeder = null;
+    private Servo led = null;
 
     // MARK:- CAMERA
     private static final int DESIRED_TAG_ID = 20;
@@ -80,6 +81,11 @@ public class MainOpMode extends LinearOpMode
     // tolerance and deadband
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
+    int prevFlyPosition1 = 0;
+    int prevFlyPosition2 = 0;
+    double[] prevFlySpeeds1 = new double[100];
+    double[] prevFlySpeeds2 = new double[100];
+    ElapsedTime flyTimer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
 
     // --- existing variables from your code (fly state toggles, button edge trackers, etc) ---
     @Override public void runOpMode()
@@ -90,6 +96,7 @@ public class MainOpMode extends LinearOpMode
         double  turn            = 0;
         double flySpeed = 0;
         boolean flyOn = false;
+        boolean flyAtSpeed = false;
         double lastTime = 0;
         boolean feederUp = false;
 
@@ -129,10 +136,10 @@ public class MainOpMode extends LinearOpMode
         rspin = hardwareMap.get(CRServo.class, "rspin");
         lspin = hardwareMap.get(CRServo.class, "lspin");
         feeder = hardwareMap.get(Servo.class, "gate");
+        led = hardwareMap.get(Servo.class,"led");
         //encoders/pots
         spinRight = hardwareMap.get(AnalogInput.class, "respin");
         spinLeft = hardwareMap.get(AnalogInput.class, "lespin");
-
 
         frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
@@ -144,6 +151,9 @@ public class MainOpMode extends LinearOpMode
         rspin.setDirection(CRServo.Direction.FORWARD);
         lspin.setDirection(CRServo.Direction.FORWARD);
         feeder.setDirection(Servo.Direction.FORWARD);
+
+        fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         setManualExposure(6, 250);  // Use low exposure time to reduce motion blur
         feeder.setPosition(1);
@@ -229,6 +239,35 @@ public class MainOpMode extends LinearOpMode
                 flySpeed -= (flySpeed > 0)? 0.05:0;
                 lastTime = runtime.milliseconds();
             }
+            //flywheel encoder stuff
+            //wheel 1
+            for(int i=prevFlySpeeds1.length-1;i>0;i--){
+                prevFlySpeeds1[i]=prevFlySpeeds1[i-1];
+            }
+            prevFlySpeeds1[0] = (double) (fly1.getCurrentPosition() - prevFlyPosition1) / flyTimer.time();
+            //idk stdev
+            double mean = 0;
+            for (double n : prevFlySpeeds1) mean += n;
+            mean /= prevFlySpeeds1.length;
+            double sum = 0;
+            for (double n : prevFlySpeeds1) sum += Math.pow(n - mean, 2);
+            flyAtSpeed = (Math.sqrt(sum / prevFlySpeeds1.length)) < 0.2;
+            prevFlyPosition1 = fly1.getCurrentPosition();
+            //wheel 2
+            //flywheel encoder stuff
+            for(int i=prevFlySpeeds2.length-1;i>0;i--){
+                prevFlySpeeds2[i]=prevFlySpeeds2[i-1];
+            }
+            prevFlySpeeds2[0] = (double) (fly2.getCurrentPosition() - prevFlyPosition2) / flyTimer.time();
+            //idk stdev
+            mean = 0;
+            for (double n : prevFlySpeeds2) mean += n;
+            mean /= prevFlySpeeds2.length;
+            sum = 0;
+            for (double n : prevFlySpeeds2) sum += Math.pow(n - mean, 2);
+            flyAtSpeed = ((Math.sqrt(sum / prevFlySpeeds2.length)) < 0.2)&&(flyAtSpeed);
+            prevFlyPosition2 = fly2.getCurrentPosition();
+            flyTimer.reset();
 
             // ----- CAROUSEL: dpad edge-detect to cycle presets -----
             if (gamepad1.dpad_right && !right1Pressed) {
@@ -299,6 +338,17 @@ public class MainOpMode extends LinearOpMode
                 turn   = -gamepad1.right_stick_x;
             }
 
+            //led
+            if(!flyOn){
+                led.setPosition(1);//white
+            }
+            else if(flyAtSpeed){
+                led.setPosition(0.5);//green
+            }
+            else{
+                led.setPosition(0.3);//red
+            }
+
             // Apply desired axes motions to the drivetrain (unchanged).
             moveRobot(drive, strafe, turn);
 
@@ -330,6 +380,8 @@ public class MainOpMode extends LinearOpMode
             telemetry.addData("SelectedPresetIdx", carouselIndex + " -> " + targetAngle + "°");
             telemetry.addData("Fly state", flyOn);
             telemetry.addData("Fly power", flySpeed);
+            telemetry.addData("Actual fly speed","Wheel 1: %7.1 Wheel 2: %7.1", prevFlySpeeds1[0],prevFlySpeeds2[0]);
+            telemetry.addData("Fly at correct power", flyAtSpeed);
             telemetry.addData("Feeder Up",feederUp);
             telemetry.addData("Angle? RIGHT", mapVoltageToAngle360(voltR, 0.01, 3.29));
             telemetry.addData("Angle? LEFT", mapVoltageToAngle360(voltL, 0.01, 3.29));
@@ -343,6 +395,7 @@ public class MainOpMode extends LinearOpMode
     } // end runOpMode()
 
     // --- PID update that runs once per loop (non-blocking) ---
+
     private void updateCarouselPID(double targetAngle, double dt) {
         // read angles 0..360
         double angleR = mapVoltageToAngle360(spinRight.getVoltage(), 0.01, 3.29);
