@@ -69,8 +69,7 @@ public class MainOpMode extends LinearOpMode
     private DcMotor intake = null;
     private Servo led = null;
     private Servo hood = null;
-    private CRServo tran1 = null;
-    private CRServo tran2 = null;
+    private Servo trans = null;
 
     // CAMERA VARS
     private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
@@ -148,8 +147,7 @@ public class MainOpMode extends LinearOpMode
         //SERVOS
         led = hardwareMap.get(Servo.class,"led");
         hood = hardwareMap.get(Servo.class,"hood");
-        tran1 =  hardwareMap.get(CRServo.class,"t1");
-        tran2 = hardwareMap.get(CRServo.class,"t2");
+        trans =  hardwareMap.get(Servo.class,"t1");
 
         ToggleServo hoodt = new ToggleServo(hood,  new int[]{30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 355}, Servo.Direction.FORWARD, 0);
 
@@ -165,8 +163,6 @@ public class MainOpMode extends LinearOpMode
         fly1.setDirection(DcMotor.Direction.REVERSE);
         fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
-        tran2.setDirection(DcMotor.Direction.REVERSE);
-        tran1.setDirection(DcMotor.Direction.FORWARD);
 
         //INIT ACTIONS
         setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
@@ -262,12 +258,10 @@ public class MainOpMode extends LinearOpMode
                 tranOn = !tranOn;
             }
             if(tranOn) {
-                tran1.setPower(1);
-                tran2.setPower(1);
+                trans.setPosition(1);
             }
             else {
-                tran1.setPower(0);
-                tran2.setPower(0);
+                trans.setPosition(0);
             }
 
             //CAMERA VARS
