@@ -31,6 +31,7 @@ package org.firstinspires.ftc.teamcode;
 
 import android.util.Size;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -38,7 +39,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
-
+import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
@@ -52,11 +53,9 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@TeleOp(name="MainOpMode", group = "Concept")
-public class MainOpMode extends LinearOpMode
+@TeleOp(name="FacingGoalOpMode", group = "Concept")
+public class FaceGoalOpMode extends LinearOpMode
 {
-    final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
-    final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
     private ElapsedTime runtime = new ElapsedTime();
 
     // HARDWARE DECLARATIONS
@@ -64,13 +63,6 @@ public class MainOpMode extends LinearOpMode
     private DcMotor frontRightDrive = null;  //  Used to control the right front drive wheel
     private DcMotor backLeftDrive = null;  //  Used to control the left back drive wheel
     private DcMotor backRightDrive = null;  //  Used to control the right back drive wheel
-    private DcMotor fly1 = null;
-    private DcMotor fly2 = null;
-    private DcMotor intake = null;
-    private Servo led = null;
-    private Servo hood = null;
-    private CRServo tran1 = null;
-    private CRServo tran2 = null;
 
     // CAMERA VARS
     private static final int DESIRED_TAG_ID = 20;     // Choose the tag you want to approach or set to -1 for ANY tag.
@@ -85,54 +77,30 @@ public class MainOpMode extends LinearOpMode
     private long lastDetectionTime = 0;
     private static final long PREDICTION_TIMEOUT = 500;
 
-    //LED INDICATOR
-    int prevFlyPosition1 = 0;
-    int prevFlyPosition2 = 0;
-    double[] prevFlySpeeds1 = new double[100];
-    double[] prevFlySpeeds2 = new double[100];
-    double flyLedTolerance = 0.25;
-    ElapsedTime flyTimer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+    private double lastHeadingError = 0;
+    private ElapsedTime pidTimer = new ElapsedTime();
+
+    double TURN_P = 0.002;  // Proportional gain
+    double TURN_D = 0.002;  // Derivative gain (start small and increase)
+    final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
+    final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
 
     @Override public void runOpMode()
     {
         //CAMERA VARS
         boolean targetFound     = false;
-        boolean tranOn = false;
 
         //DRIVE VARS
         double  drive           = 0;
         double  strafe          = 0;
         double  turn            = 0;
 
-        //FLYWHEEL VARS
-        double flySpeed = 0;
-        boolean flyOn = false;
-        boolean flyAtSpeed = false;
-        double lastTime = 0;
-
         //CONTROL VARS
-        //GAMEPAD 1
-        boolean lb1Pressed = false;
-        boolean rb1Pressed = false;
-        boolean b1Pressed = false;
-        boolean a1Pressed = false;
-        boolean x1Pressed = false;
-        boolean y1Pressed = false;
         boolean down1Pressed = false;
-        boolean up1Pressed = false;
         boolean right1Pressed = false;
         boolean left1Pressed = false;
-        //GAMEPAD 2
-        boolean lb2Pressed = false;
-        boolean rb2Pressed = false;
-        boolean b2Pressed = false;
-        boolean a2Pressed = false;
-        boolean x2Pressed = false;
-        boolean y2Pressed = false;
-        boolean down2Pressed = false;
-        boolean up2Pressed = false;
-        boolean right2Pressed = false;
-        boolean left2Pressed = false;
+        boolean a1Pressed = false;
+        boolean b1Pressed = false;
         // Initialize the Apriltag Detection process
         initAprilTag();
 
@@ -141,32 +109,12 @@ public class MainOpMode extends LinearOpMode
         frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
-        fly1 = hardwareMap.get(DcMotor.class, "fly1");
-        fly2 = hardwareMap.get(DcMotor.class, "fly2");
-        intake = hardwareMap.get(DcMotor.class, "in");
-
-        //SERVOS
-        led = hardwareMap.get(Servo.class,"led");
-        hood = hardwareMap.get(Servo.class,"hood");
-        tran1 =  hardwareMap.get(CRServo.class,"t1");
-        tran2 = hardwareMap.get(CRServo.class,"t2");
-
-        ToggleServo hoodt = new ToggleServo(hood,  new int[]{30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 355}, Servo.Direction.FORWARD, 0);
-
-        //MODES (I DON'T KNOW IF THIS IS NECESSARY)
-        fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         //DIRECTIONS
         frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.REVERSE);
-        fly2.setDirection(DcMotor.Direction.FORWARD);
-        intake.setDirection(DcMotor.Direction.REVERSE);
-        tran2.setDirection(DcMotor.Direction.REVERSE);
-        tran1.setDirection(DcMotor.Direction.FORWARD);
 
         //INIT ACTIONS
         setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
@@ -176,104 +124,31 @@ public class MainOpMode extends LinearOpMode
         telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
 
-        hood.setPosition(0);
         //WAIT
         waitForStart();
         runtime.reset();
 
         while (opModeIsActive())
         {
-            //FLYWHEEL CONTROLS
-            if(gamepad1.a && !a1Pressed)  {
-                flyOn = !flyOn;
-                flySpeed = 0.5;
-            }
-            if(flyOn) {
-                fly1.setPower(flySpeed);
-                fly2.setPower(flySpeed);
-            }
-            else {
-                fly1.setPower(0);
-                fly2.setPower(0);
-            }
-            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed += (flySpeed < 1)? 0.05:0;
-                lastTime = runtime.milliseconds();
-            }
-            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed -= (flySpeed > 0)? 0.05:0;
-                lastTime = runtime.milliseconds();
-            }
-
-            if(gamepad1.dpad_right&&!right1Pressed){
-                flyLedTolerance += 0.01;
-            }
-            else if(gamepad1.dpad_left&&!left1Pressed){
-                flyLedTolerance -= 0.01;
-            }
-
-            if(gamepad1.dpad_down && !down1Pressed) {
-                hoodt.toggleLeft();
-            }
-
-            if(gamepad1.dpad_up && !up1Pressed) {
-                hoodt.toggleRight();
-            }
-
-            //FLYWHEEL ENCODER
-            //WHEEL 1
-            for(int i=prevFlySpeeds1.length-1;i>0;i--){
-                prevFlySpeeds1[i]=prevFlySpeeds1[i-1];
-            }
-            prevFlySpeeds1[0] = (double) (fly1.getCurrentPosition() - prevFlyPosition1) / flyTimer.time();
-            flyAtSpeed = (standardDev(prevFlySpeeds1)<flyLedTolerance);
-            prevFlyPosition1 = fly1.getCurrentPosition();
-            //WHEEL 2
-            for(int i=prevFlySpeeds2.length-1;i>0;i--){
-                prevFlySpeeds2[i]=prevFlySpeeds2[i-1];
-            }
-            prevFlySpeeds2[0] = (double) (fly2.getCurrentPosition() - prevFlyPosition2) / flyTimer.time();
-            flyAtSpeed = (standardDev(prevFlySpeeds2) < flyLedTolerance)&&(flyAtSpeed);
-            prevFlyPosition2 = fly2.getCurrentPosition();
-            flyTimer.reset();
-
-            //INDICATOR LIGHT
-            if(!flyOn){
-                led.setPosition(1);//white
-            }
-            else if(flyAtSpeed){
-                led.setPosition(0.5);//green
-            }
-            else{
-                led.setPosition(0.3);//red (ish)
-            }
-
-            //INTAKE
-            if(gamepad1.right_bumper && !rb1Pressed) {
-                if(intake.getPower() <= 0) intake.setPower(1);
-                else intake.setPower(0);
-            }
-            //OUTTAKE
-            if(gamepad1.left_bumper && !lb1Pressed) {
-                intake.setPower(-0.6);
-            }
-
-            if(gamepad1.y && !y1Pressed) {
-                tranOn = !tranOn;
-            }
-            if(tranOn) {
-                tran1.setPower(1);
-                tran2.setPower(1);
-            }
-            else {
-                tran1.setPower(0);
-                tran2.setPower(0);
-            }
-
             //CAMERA VARS
             targetFound = false;
             desiredTag  = null;
 
+//            final double TURN_P = 0.035;  // Proportional gain
+//            final double TURN_D = 0.0;
+            if(gamepad1.dpad_right && !right1Pressed) {
+                TURN_P += 0.001;
+            }
+            if(gamepad1.dpad_left && !left1Pressed) {
+                TURN_P -= TURN_P > 0 ? 0.001:0;
+            }
+            if(gamepad1.a && !a1Pressed) {
+                TURN_D += 0.0002;
+            }
+            if(gamepad1.b && !b1Pressed) {
+                TURN_D -= TURN_D > 0 ? 0.0002:0;
+            }
+            telemetry.addData("Tracking", "LIVE (prop: %.5f°, deriv: %.5f)", TURN_P, TURN_D);
             // Step through the list of detected tags and look for a matching tag
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
@@ -305,7 +180,7 @@ public class MainOpMode extends LinearOpMode
                 telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
             }
 
-            if (gamepad1.x && !x1Pressed){
+            if (gamepad1.dpad_down && !down1Pressed){
                 facingGoal = !facingGoal;
             }
 
@@ -318,13 +193,19 @@ public class MainOpMode extends LinearOpMode
 
                    double headingError = desiredTag.ftcPose.bearing;
 
+                   double deltaTime = pidTimer.seconds();
+                   double derivative = (headingError - lastHeadingError) / deltaTime;
+                   pidTimer.reset();
+
                     if (Math.abs(headingError) < 2.0) {
                         turn = 0;
                     } else {
                         turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
                     }
 
-                   telemetry.addData("Tracking", "LIVE");
+                   lastHeadingError = headingError;
+
+                   telemetry.addData("Tracking", "LIVE (err: %.1f°, deriv: %.2f)", headingError, derivative);
                 }
                else {
                    //TRYING TO PREVENT A LOT OF TRACKING LOSS
@@ -334,22 +215,32 @@ public class MainOpMode extends LinearOpMode
                        // Continue tracking last known bearing
                        double headingError = lastKnownBearing;
 
+                       double deltaTime = pidTimer.seconds();
+                       double derivative = (headingError - lastHeadingError) / deltaTime;
+                       pidTimer.reset();
+
                        if (Math.abs(headingError) < 2.0) {
                            turn = 0;
                        } else {
-                           turn = Range.clip(headingError * -TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                           turn = (TURN_P * headingError) + (TURN_D * derivative);
+                           turn = Range.clip(turn * -1, -MAX_AUTO_TURN, MAX_AUTO_TURN);
                        }
+
+                       lastHeadingError = headingError;
 
                        telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
                    } else {
-                       // Lost for too long, stop auto-turning
                        turn = 0;
+                       lastHeadingError = 0;
+                       pidTimer.reset();
                        telemetry.addData("Tracking", "LOST");
                    }
                }
             }
             else{
                 turn   = -gamepad1.right_stick_x;
+                lastHeadingError = 0;
+                pidTimer.reset();
             }
             //MANUAL
             drive = -gamepad1.left_stick_y;
@@ -359,35 +250,14 @@ public class MainOpMode extends LinearOpMode
             moveRobot(drive, strafe, turn);
 
             //CONTROL RESETS
-            b1Pressed = gamepad1.b;
-            a1Pressed = gamepad1.a;
-            x1Pressed = gamepad1.x;
-            y1Pressed = gamepad1.y;
             down1Pressed = gamepad1.dpad_down;
-            up1Pressed = gamepad1.dpad_up;
-            left1Pressed = gamepad1.dpad_left;
             right1Pressed = gamepad1.dpad_right;
-            lb1Pressed = gamepad1.left_bumper;
-            rb1Pressed = gamepad1.right_bumper;
-
-            b2Pressed = gamepad2.b;
-            a2Pressed = gamepad2.a;
-            x2Pressed = gamepad2.x;
-            y2Pressed = gamepad2.y;
-            down2Pressed = gamepad2.dpad_down;
-            up2Pressed = gamepad2.dpad_up;
-            left2Pressed = gamepad2.dpad_left;
-            right2Pressed = gamepad2.dpad_right;
-            lb2Pressed = gamepad2.left_bumper;
-            rb2Pressed = gamepad2.right_bumper;
+            left1Pressed = gamepad1.dpad_left;
+            a1Pressed = gamepad1.a;
+            b1Pressed = gamepad1.b;
 
             //TELEMETRY
             telemetry.addData("Status", "Run Time: " + runtime.toString());
-            telemetry.addData("Fly state", flyOn);
-            telemetry.addData("Fly power", flySpeed);
-            telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", prevFlySpeeds1[0], prevFlySpeeds2[0]);
-            telemetry.addData("Flying at correct power", flyAtSpeed);
-            telemetry.addData("Fly LED tolerance",flyLedTolerance);
             telemetry.update();
 
             //hmmmm
@@ -514,14 +384,5 @@ public class MainOpMode extends LinearOpMode
         aprilTag.setDecimation(newDecimation);
         telemetry.addData("Decimation: ", "%d", newDecimation);
 
-    }
-
-    private double standardDev(double[] arr){
-        double mean = 0;
-        for (double n : arr) mean += n;
-        mean /= arr.length;
-        double sum = 0;
-        for (double n : arr) sum += Math.pow(n - mean, 2);
-        return (Math.sqrt(sum / arr.length));
     }
 }
