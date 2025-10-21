@@ -162,9 +162,15 @@ public class MainOpMode extends LinearOpMode
         hood = hardwareMap.get(Servo.class,"hood");
         trans =  hardwareMap.get(Servo.class,"t1");
 
-        ToggleServo hoodt = new ToggleServo(hood,  new int[]{30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 355}, Servo.Direction.FORWARD, 0);
+        //TOGGLESERVO
+        ToggleServo hoodt = new ToggleServo(hood,  new int[]{180, 210, 240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
+//40, 1150, 270
+        //50, 1200, 270
+        //60, 1250, 270
+        //70, 1350, 285
+        //100 1450, 0.591
 
-        //MODES (I DON'T KNOW IF THIS IS NECESSARY)
+        //MODES
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
@@ -199,22 +205,24 @@ public class MainOpMode extends LinearOpMode
             //FLYWHEEL CONTROLS
             if(gamepad1.a && !a1Pressed)  {
                 flyOn = !flyOn;
-                flySpeed = 0.5;
+                flySpeed = 2350;
             }
+            //takes in ticks per second = (v/(2*π*0.048)) * 28
             if(flyOn) {
-                fly1.setPower(flySpeed);
-                fly2.setPower(flySpeed);
+                fly1.setVelocity(flySpeed);
+                fly2.setVelocity(flySpeed);
             }
             else {
-                fly1.setPower(0);
-                fly2.setPower(0);
+                fly1.setVelocity(0);
+                fly2.setVelocity(0);
             }
+
             if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed += (flySpeed < 1)? 0.05:0;
+                flySpeed += 50;
                 lastTime = runtime.milliseconds();
             }
             if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed -= (flySpeed > 0)? 0.05:0;
+                flySpeed -= (flySpeed > 0)? 50:0;
                 lastTime = runtime.milliseconds();
             }
 
@@ -279,7 +287,7 @@ public class MainOpMode extends LinearOpMode
                 transTime = runtime.milliseconds();
             }
             double timeChange = runtime.milliseconds() - transTime;
-            if(timeChange >= 180) {
+            if(timeChange >= 250) {
                 trans.setPosition(0);
             }
             //endregion
@@ -422,6 +430,7 @@ public class MainOpMode extends LinearOpMode
             telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", prevFlySpeeds1[0], prevFlySpeeds2[0]);
             telemetry.addData("Flying at correct power", flyAtSpeed);
             telemetry.addData("Fly LED tolerance",flyLedTolerance);
+            telemetry.addData("Hood angle:", "%.3f", hoodt.getServo().getPosition());
             telemetry.update();
             //endregion
 
@@ -494,10 +503,6 @@ public class MainOpMode extends LinearOpMode
                 .build();
     }
 
-    /*
-     Manually set the camera gain and exposure.
-     This can only be called AFTER calling initAprilTag(), and only works for Webcams;
-    */
     private void setManualExposure(int exposureMS, int gain) {
         // Wait for the camera to be open, then use the controls
 
@@ -532,7 +537,6 @@ public class MainOpMode extends LinearOpMode
         }
     }
 
-    // Add this method to your class
     private void adjustDecimation(double range) {
         int newDecimation;
 
