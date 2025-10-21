@@ -80,7 +80,7 @@ public class FaceGoalOpMode extends LinearOpMode
     private double lastHeadingError = 0;
     private ElapsedTime pidTimer = new ElapsedTime();
 
-    double TURN_P = 0.002;  // Proportional gain
+    double TURN_P = 0.06;  // Proportional gain
     double TURN_D = 0.002;  // Derivative gain (start small and increase)
     final double TURN_GAIN   =  0.02  ;   //  Turn Control "Gain".  e.g. Ramp up to 25% power at a 25 degree error. (0.25 / 25.0)
     final double MAX_AUTO_TURN  = 0.4;   //  Clip the turn speed to this max value (adjust for your robot)
@@ -137,7 +137,7 @@ public class FaceGoalOpMode extends LinearOpMode
 //            final double TURN_P = 0.035;  // Proportional gain
 //            final double TURN_D = 0.0;
             if(gamepad1.dpad_right && !right1Pressed) {
-                TURN_P += 0.001;
+                TURN_P += 0.0002;
             }
             if(gamepad1.dpad_left && !left1Pressed) {
                 TURN_P -= TURN_P > 0 ? 0.001:0;
