@@ -90,14 +90,6 @@ public class MainOpMode extends LinearOpMode
     double TURN_D = 0.002;
     final double TURN_GAIN   =  0.02  ;
     final double MAX_AUTO_TURN  = 0.4;
-
-    //LED INDICATOR
-    int prevFlyPosition1 = 0;
-    int prevFlyPosition2 = 0;
-    double[] prevFlySpeeds1 = new double[100];
-    double[] prevFlySpeeds2 = new double[100];
-    double flyLedTolerance = 0.25;
-    ElapsedTime flyTimer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
     //endregion
 
     @Override public void runOpMode()
@@ -205,7 +197,7 @@ public class MainOpMode extends LinearOpMode
             //FLYWHEEL CONTROLS
             if(gamepad1.a && !a1Pressed)  {
                 flyOn = !flyOn;
-                flySpeed = 2350;
+                flySpeed = 1000;//2100;
             }
             //takes in ticks per second = (v/(2*π*0.048)) * 28
             if(flyOn) {
@@ -226,13 +218,6 @@ public class MainOpMode extends LinearOpMode
                 lastTime = runtime.milliseconds();
             }
 
-            if(gamepad1.dpad_right&&!right1Pressed){
-                flyLedTolerance += 0.01;
-            }
-            else if(gamepad1.dpad_left&&!left1Pressed){
-                flyLedTolerance -= 0.01;
-            }
-
             if(gamepad1.dpad_down && !down1Pressed) {
                 hoodt.toggleLeft();
             }
@@ -241,22 +226,8 @@ public class MainOpMode extends LinearOpMode
                 hoodt.toggleRight();
             }
 
-            //FLYWHEEL ENCODER
-            //WHEEL 1
-            for(int i=prevFlySpeeds1.length-1;i>0;i--){
-                prevFlySpeeds1[i]=prevFlySpeeds1[i-1];
-            }
-            prevFlySpeeds1[0] = (double) (fly1.getCurrentPosition() - prevFlyPosition1) / flyTimer.time();
-            flyAtSpeed = (standardDev(prevFlySpeeds1)<flyLedTolerance);
-            prevFlyPosition1 = fly1.getCurrentPosition();
-            //WHEEL 2
-            for(int i=prevFlySpeeds2.length-1;i>0;i--){
-                prevFlySpeeds2[i]=prevFlySpeeds2[i-1];
-            }
-            prevFlySpeeds2[0] = (double) (fly2.getCurrentPosition() - prevFlyPosition2) / flyTimer.time();
-            flyAtSpeed = (standardDev(prevFlySpeeds2) < flyLedTolerance)&&(flyAtSpeed);
-            prevFlyPosition2 = fly2.getCurrentPosition();
-            flyTimer.reset();
+            //FLYWHEEL LED
+            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50)&&(flySpeed - fly2.getVelocity() < 50)&&(flySpeed - fly2.getVelocity() > -50);
 
             //INDICATOR LIGHT
             if(!flyOn){
@@ -427,9 +398,8 @@ public class MainOpMode extends LinearOpMode
             telemetry.addData("Status", "Run Time: " + runtime.toString());
             telemetry.addData("Fly state", flyOn);
             telemetry.addData("Fly power", flySpeed);
-            telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", prevFlySpeeds1[0], prevFlySpeeds2[0]);
+            telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
             telemetry.addData("Flying at correct power", flyAtSpeed);
-            telemetry.addData("Fly LED tolerance",flyLedTolerance);
             telemetry.addData("Hood angle:", "%.3f", hoodt.getServo().getPosition());
             telemetry.update();
             //endregion
@@ -551,14 +521,5 @@ public class MainOpMode extends LinearOpMode
         aprilTag.setDecimation(newDecimation);
         telemetry.addData("Decimation: ", "%d", newDecimation);
 
-    }
-
-    private double standardDev(double[] arr){
-        double mean = 0;
-        for (double n : arr) mean += n;
-        mean /= arr.length;
-        double sum = 0;
-        for (double n : arr) sum += Math.pow(n - mean, 2);
-        return (Math.sqrt(sum / arr.length));
     }
 }
