@@ -91,7 +91,7 @@ public class OtherOpMode extends LinearOpMode
     ElapsedTime flyTimer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
 
     //FLYWHEEL PID STUFF
-    private  double pidKp = 0.5;    // start small, increase until responsive
+    private  double pidKp = 0.6;    // start small, increase until responsive
     private  double pidKi = 0.0;  // tiny integral (if needed)
     private  double pidKd = 0.0;  // derivative to damp oscillation
     private  double pidKf = 0.05;    // small directional feedforward to overcome stiction
@@ -202,7 +202,7 @@ public class OtherOpMode extends LinearOpMode
             // === PIDF tuning via Gamepad2 ===
             double adjustStepP = 0.02;
             double adjustStepI = 0.01;
-            double adjustStepD = 0.2;
+            double adjustStepD = 0.02;
             double debounceTime = 250; // milliseconds
 
             if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
@@ -566,54 +566,55 @@ public class OtherOpMode extends LinearOpMode
 
         // compute shortest signed error [-180,180]
         double error1 = targetSpeed-speed1;
-        double error2 = targetSpeed-speed2;
+        error1 += targetSpeed-speed2;
 
         // integral with anti-windup
         integral1 += error1 * dt;
-        integral2 += error2 * dt;
+//        integral2 += error2 * dt;
         integral1 = clamp(integral1, -integralLimit, integralLimit);
-        integral1 = clamp(integral2, -integralLimit, integralLimit);
+//        integral2 = clamp(integral2, -integralLimit, integralLimit);
 
         // derivative
         double d1 = (error1 - lastError1) / Math.max(dt, 1e-6);
-        double d2 = (error2 - lastError2) / Math.max(dt, 1e-6);
+//        double d2 = (error2 - lastError2) / Math.max(dt, 1e-6);
 
         // PIDF output (interpreted as servo power)
         double out1 = pidKp * error1 + pidKi * integral1 + pidKd * d1;
-        double out2 = pidKp * error2 + pidKi * integral2 + pidKd * d2;
+//        double out2 = pidKp * error2 + pidKi * integral2 + pidKd * d2;
 
         // small directional feedforward to overcome stiction when error significant
         if (Math.abs(error1) > 1.0) out1 += pidKf * Math.signum(error1);
-        if (Math.abs(error2) > 1.0) out2 += pidKf * Math.signum(error2);
+//        if (Math.abs(error2) > 1.0) out2 += pidKf * Math.signum(error2);
 
         // clamp to [-1,1] and apply deadband
         out1 = Range.clip(out1, 0.0, 1.0);
-        out2 = Range.clip(out2, 0.0, 1.0);
+//        out2 = Range.clip(out2, 0.0, 1.0);
         if (Math.abs(out1) < outputDeadband) out1 = 0.0;
-        if (Math.abs(out2) < outputDeadband) out2 = 0.0;
+//        if (Math.abs(out2) < outputDeadband) out2 = 0.0;
 
         // if within tolerance, zero outputs and decay integrator to avoid bumping
         if (Math.abs(error1) <= positionToleranceDeg) {
             out1 = 0.0;
             integral1 *= 0.2;
         }
-        if (Math.abs(error2) <= positionToleranceDeg) {
-            out2 = 0.0;
-            integral2 *= 0.2;
-        }
+//        if (Math.abs(error2) <= positionToleranceDeg) {
+//            out2 = 0.0;
+//            integral2 *= 0.2;
+//        }
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
         fly1.setPower(out1);
-        fly2.setPower(out2);
+        fly1.setPower(out1);
+//        fly2.setPower(out2);
 
         // store errors for next derivative calculation
         lastError1 = error1;
-        lastError2 = error2;
+//        lastError2 = error2;
 
         // telemetry for PID (keeps concise, add more if you want)
         telemetry.addData("Flywheel Target", "%.1f", targetSpeed);
-        telemetry.addData("1", "speed=%.2f, err=%.2f, pwr=%.2f", speed1, error1, out1);
-        telemetry.addData("2", "speed=%.2f, err=%.2f, pwr=%.2f", speed2, error2, out2);
+        telemetry.addData("1", "speed 1=%.2f, speed 2=%.2f, err=%.2f, pwr=%.2f", speed1, speed2, error1, out1);
+//        telemetry.addData("2", "speed=%.2f, err=%.2f, pwr=%.2f", speed2, error2, out2);
     }
     // small clamp utility
     private double clamp(double v, double lo, double hi) {
