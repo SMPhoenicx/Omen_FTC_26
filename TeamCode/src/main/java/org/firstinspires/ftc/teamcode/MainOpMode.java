@@ -96,7 +96,9 @@ public class MainOpMode extends LinearOpMode
     {
         //CAMERA VARS
         boolean targetFound     = false;
-        boolean tranOn = false;
+
+        //TRANS VARS
+        double transLastTime = 0;
 
         //DRIVE VARS
         double  drive           = 0;
@@ -163,6 +165,7 @@ public class MainOpMode extends LinearOpMode
         fly1.setDirection(DcMotor.Direction.REVERSE);
         fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
+        trans.setDirection(Servo.Direction.REVERSE);
 
         //INIT ACTIONS
         setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
@@ -255,13 +258,12 @@ public class MainOpMode extends LinearOpMode
             }
 
             if(gamepad1.y && !y1Pressed) {
-                tranOn = !tranOn;
-            }
-            if(tranOn) {
                 trans.setPosition(1);
+                transLastTime = runtime.milliseconds();
             }
-            else {
+            if(runtime.milliseconds() - transLastTime > 500){
                 trans.setPosition(0);
+                transLastTime = runtime.milliseconds();
             }
 
             //CAMERA VARS
