@@ -31,6 +31,7 @@ package org.firstinspires.ftc.teamcode;
 
 import android.util.Size;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import org.firstinspires.ftc.robotcore.external.Supplier;
@@ -61,6 +62,7 @@ import dev.nextftc.hardware.impl.IMUEx;
 import dev.nextftc.hardware.impl.MotorEx;
 
 @TeleOp(name = "MainNextOp")
+@Disabled
 public class MainNextOp extends NextFTCOpMode {
 
     private final MotorEx frontLeftMotor = new MotorEx("fl").reversed();
