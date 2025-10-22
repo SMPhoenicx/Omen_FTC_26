@@ -155,7 +155,7 @@ public class MainOpMode extends LinearOpMode
         trans =  hardwareMap.get(Servo.class,"t1");
 
         //TOGGLESERVO
-        ToggleServo hoodt = new ToggleServo(hood,  new int[]{180, 210, 240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
+        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
 //40, 1150, 270
         //50, 1200, 270
         //60, 1250, 270
@@ -193,13 +193,83 @@ public class MainOpMode extends LinearOpMode
 
         while (opModeIsActive())
         {
+            //region CAMERA
+            targetFound = false;
+            desiredTag  = null;
+
+            // Step through the list of detected tags and look for a matching tag
+            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
+            for (AprilTagDetection detection : currentDetections) {
+                // Look to see if we have size info on this tag.
+                if (detection.metadata != null) {
+                    //  Check to see if we want to track towards this tag.
+                    if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
+                        // Yes, we want to use this tag.
+                        desiredTag = detection;
+                        targetFound = true;
+                        break;
+                    } else {
+                        // This tag is in the library, but we do not want to track it right now.
+                        telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
+                    }
+                } else {
+                    // This tag is NOT in the library, so we don't have enough information to track to it.
+                    telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
+                }
+            }
+
+            // DO WHEN CAMERA TRACKING
+            //MAYBE MAKE THIS WHEN facingGoal BOOL IS TRUE?
+            if (targetFound) {
+                adjustDecimation(desiredTag.ftcPose.range);
+                double range = desiredTag.ftcPose.range;
+
+                if(range >= 67 ) {
+                    hoodt.setIndex(3);
+                }
+                else {
+                    hoodt.setIndex(2);
+                }
+
+                flySpeed = 5.47 * range + 933.0;
+
+                telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
+                telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
+                telemetry.addData("Range",  "%5.1f inches", desiredTag.ftcPose.range);
+                telemetry.addData("Bearing","%3.0f degrees", desiredTag.ftcPose.bearing);
+                telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
+            }
+            else {
+                if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
+                    flySpeed += 50;
+                    lastTime = runtime.milliseconds();
+                }
+                if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
+                    flySpeed -= (flySpeed > 0)? 50:0;
+                    lastTime = runtime.milliseconds();
+                }
+
+                if(gamepad1.dpad_down && !down1Pressed) {
+                    hoodt.toggleLeft();
+                }
+
+                if(gamepad1.dpad_up && !up1Pressed) {
+                    hoodt.toggleRight();
+                }
+            }
+            //endregion
+
             //region FLYWHEEL AND LIGHTS
             //FLYWHEEL CONTROLS
             if(gamepad1.a && !a1Pressed)  {
                 flyOn = !flyOn;
-                flySpeed = 1000;//2100;
             }
-            //takes in ticks per second = (v/(2*π*0.048)) * 28
+
+//            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
+//            double compensatedF = 12.0 * (13.0 / voltage);
+//            fly1.setVelocityPIDFCoefficients(10.0, 3.0, 0.0, compensatedF);
+//            fly2.setVelocityPIDFCoefficients(10.0, 3.0, 0.0, compensatedF);
+
             if(flyOn) {
                 fly1.setVelocity(flySpeed);
                 fly2.setVelocity(flySpeed);
@@ -207,23 +277,6 @@ public class MainOpMode extends LinearOpMode
             else {
                 fly1.setVelocity(0);
                 fly2.setVelocity(0);
-            }
-
-            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed += 50;
-                lastTime = runtime.milliseconds();
-            }
-            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                flySpeed -= (flySpeed > 0)? 50:0;
-                lastTime = runtime.milliseconds();
-            }
-
-            if(gamepad1.dpad_down && !down1Pressed) {
-                hoodt.toggleLeft();
-            }
-
-            if(gamepad1.dpad_up && !up1Pressed) {
-                hoodt.toggleRight();
             }
 
             //FLYWHEEL LED
@@ -260,42 +313,6 @@ public class MainOpMode extends LinearOpMode
             double timeChange = runtime.milliseconds() - transTime;
             if(timeChange >= 250) {
                 trans.setPosition(0);
-            }
-            //endregion
-
-            //region CAMERA
-            targetFound = false;
-            desiredTag  = null;
-
-            // Step through the list of detected tags and look for a matching tag
-            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-            for (AprilTagDetection detection : currentDetections) {
-                // Look to see if we have size info on this tag.
-                if (detection.metadata != null) {
-                    //  Check to see if we want to track towards this tag.
-                    if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
-                        // Yes, we want to use this tag.
-                        desiredTag = detection;
-                        targetFound = true;
-                        break;
-                    } else {
-                        // This tag is in the library, but we do not want to track it right now.
-                        telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
-                    }
-                } else {
-                    // This tag is NOT in the library, so we don't have enough information to track to it.
-                    telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
-                }
-            }
-
-            // CAMERA INFO
-            if (targetFound) {
-                adjustDecimation(desiredTag.ftcPose.range);
-                telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
-                telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
-                telemetry.addData("Range",  "%5.1f inches", desiredTag.ftcPose.range);
-                telemetry.addData("Bearing","%3.0f degrees", desiredTag.ftcPose.bearing);
-                telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
             }
             //endregion
 

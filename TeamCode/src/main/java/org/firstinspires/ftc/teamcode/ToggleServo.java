@@ -81,5 +81,9 @@ public class ToggleServo{
         this.servo.setPosition(angles.get(this.pos) / 355.0);
     }
 
+    public void setIndex(int i) {
+        this.servo.setPosition(angles.get(i) / 355.0);
+    }
+
     public Servo getServo(){return this.servo;}
 }
