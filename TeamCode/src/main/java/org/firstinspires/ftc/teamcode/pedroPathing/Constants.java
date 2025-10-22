@@ -16,12 +16,12 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 public class Constants {
     public static FollowerConstants followerConstants = new FollowerConstants()
             .mass(9.52544)
-            .forwardZeroPowerAcceleration(-49.3516883945663)
-            .lateralZeroPowerAcceleration(-71.04874194079048)
-            .translationalPIDFCoefficients(new PIDFCoefficients(0.12, 0, 0.01, 0.02))
-            .headingPIDFCoefficients(new PIDFCoefficients(1,0,0.05,0.02))
-            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.02,0,0.00002,0.6,0.04))
-            .centripetalScaling(0.01);
+            .forwardZeroPowerAcceleration(-35.61107470369831)
+            .lateralZeroPowerAcceleration(-81.26478251846179)
+            .translationalPIDFCoefficients(new PIDFCoefficients(0.06, 0, 0.005, 0.02))
+            .headingPIDFCoefficients(new PIDFCoefficients(1.2,0,0.08,0.02))
+            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.4,0,0.00000001,0.6,0.04))
+            .centripetalScaling(0.001);
 
     public static PathConstraints pathConstraints = new PathConstraints(0.99, 100, 1, 1);
 
@@ -43,20 +43,20 @@ public class Constants {
             .leftRearMotorDirection(DcMotorSimple.Direction.REVERSE)
             .rightFrontMotorDirection(DcMotorSimple.Direction.FORWARD)
             .rightRearMotorDirection(DcMotorSimple.Direction.FORWARD)
-            .xVelocity(77.89680284339842)
-            .yVelocity(55.07917092588737);
+            .xVelocity(83.213618641897)
+            .yVelocity(61.276508546598414);
 
     public static ThreeWheelConstants localizerConstants = new ThreeWheelConstants()
-            .leftPodY(5.375)
-            .rightPodY(-5.375)
-            .strafePodX(-5.5)
-            .leftEncoder_HardwareMapName("fl")
-            .rightEncoder_HardwareMapName("fr")
-            .strafeEncoder_HardwareMapName("bl")
+            .leftPodY(5.125)
+            .rightPodY(-5.125)
+            .strafePodX(-6.375)
+            .leftEncoder_HardwareMapName("skib")
+            .rightEncoder_HardwareMapName("fl")
+            .strafeEncoder_HardwareMapName("br")
             .leftEncoderDirection(Encoder.REVERSE)
             .rightEncoderDirection(Encoder.FORWARD)
             .strafeEncoderDirection(Encoder.REVERSE)
-            .forwardTicksToInches(0.0029854818259260328)
-            .strafeTicksToInches(-0.0029295215647804343)
-            .turnTicksToInches(0.002824110133050991);
+            .forwardTicksToInches(0.00329684372129633)
+            .strafeTicksToInches(-0.0029359584646608504)
+            .turnTicksToInches(0.002910196538571657);
 }
