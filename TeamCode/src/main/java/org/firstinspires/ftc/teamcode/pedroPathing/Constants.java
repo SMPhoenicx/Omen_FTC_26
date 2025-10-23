@@ -20,8 +20,8 @@ public class Constants {
             .lateralZeroPowerAcceleration(-81.26478251846179)
             .translationalPIDFCoefficients(new PIDFCoefficients(0.06, 0, 0.005, 0.02))
             .headingPIDFCoefficients(new PIDFCoefficients(1.2,0,0.08,0.02))
-            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.4,0,0.00000001,0.6,0.04))
-            .centripetalScaling(0.001);
+            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.01,0,0.00005,0.6,0.04))
+            .centripetalScaling(0.0001);
 
     public static PathConstraints pathConstraints = new PathConstraints(0.99, 100, 1, 1);
 
@@ -49,14 +49,14 @@ public class Constants {
     public static ThreeWheelConstants localizerConstants = new ThreeWheelConstants()
             .leftPodY(5.125)
             .rightPodY(-5.125)
-            .strafePodX(-6.375)
+            .strafePodX(-7)
             .leftEncoder_HardwareMapName("skib")
             .rightEncoder_HardwareMapName("fl")
             .strafeEncoder_HardwareMapName("br")
             .leftEncoderDirection(Encoder.REVERSE)
             .rightEncoderDirection(Encoder.FORWARD)
             .strafeEncoderDirection(Encoder.REVERSE)
-            .forwardTicksToInches(0.00329684372129633)
-            .strafeTicksToInches(-0.0029359584646608504)
-            .turnTicksToInches(0.002910196538571657);
+            .forwardTicksToInches(0.0029906905942694607)
+            .strafeTicksToInches(-0.0029906173594936272)
+            .turnTicksToInches(0.0028762739224952347);
 }
