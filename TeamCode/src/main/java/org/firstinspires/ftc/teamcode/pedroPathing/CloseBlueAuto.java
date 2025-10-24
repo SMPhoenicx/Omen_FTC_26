@@ -22,7 +22,7 @@ public class CloseBlueAuto extends LinearOpMode {
     //region PEDRO VARS
     private Follower follower;
     private Timer pathTimer, actionTimer, opModeTimer;
-    private Pose startPose, pickup1, pickup2, pickup3, shoot1, shoot0;
+    private Pose startPose, pickup1, pickup2, pickup3, pickupCheck, shoot1, shoot0;
     private PathChain pickupPath1, pickupPath2, pickupPath3, scorePath0, scorePath1, scorePath2, scorePath3;
     //endregion
 
@@ -37,45 +37,52 @@ public class CloseBlueAuto extends LinearOpMode {
     //endregion
 
     public void createPoses(){
-        startPose = new Pose(55.5,7.5,Math.toRadians(90));
-        pickup1 = new Pose(54,43,Math.toRadians(180));
-        pickup2 = new Pose(52,43,Math.toRadians(180));
-        pickup3 = new Pose(46,43,Math.toRadians(180));
-        shoot1 = new Pose(60,20,2.02);
-        shoot0 = new Pose(60,15,2.02);
+        startPose = new Pose(23,129,Math.toRadians(135));
+        pickup1 = new Pose(38.5,94,Math.toRadians(180));
+        pickup2 = new Pose(35,94,Math.toRadians(180));
+        pickup3 = new Pose(31,94,Math.toRadians(180));
+        pickupCheck = new Pose(42,93,Math.toRadians(180));
+        shoot1 = new Pose(42,94,Math.toRadians(135));
+        shoot0 = new Pose(43,109,Math.toRadians(135));
     }
 
     public void createPaths(){
         pickupPath1 = follower.pathBuilder()
-                .addPath(new BezierLine(shoot0,pickup1))
-                .setLinearHeadingInterpolation(shoot0.getHeading(),pickup1.getHeading())
+                .addPath(new BezierLine(shoot0,pickupCheck))
+                .setLinearHeadingInterpolation(shoot0.getHeading(),pickupCheck.getHeading())
+                .addPath(new BezierLine(pickupCheck,pickup1))
+                .setLinearHeadingInterpolation(pickupCheck.getHeading(),pickup1.getHeading())
                 .setTimeoutConstraint(500)
                 .build();
         pickupPath2 = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,pickup2))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2.getHeading())
+                .addPath(new BezierLine(shoot1,pickupCheck))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickupCheck.getHeading())
+                .addPath(new BezierLine(pickupCheck,pickup2))
+                .setLinearHeadingInterpolation(pickupCheck.getHeading(),pickup2.getHeading())
                 .setTimeoutConstraint(500)
                 .build();
         pickupPath3 = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,pickup3))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3.getHeading())
+                .addPath(new BezierLine(shoot1,pickupCheck))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickupCheck.getHeading())
+                .addPath(new BezierLine(pickupCheck,pickup3))
+                .setLinearHeadingInterpolation(pickupCheck.getHeading(),pickup3.getHeading())
                 .setTimeoutConstraint(500)
                 .build();
         scorePath0 = follower.pathBuilder()
                 .addPath(new BezierLine(startPose,shoot0))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,10))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,0))
                 .build();
         scorePath1 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup1,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,10))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,0))
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,15))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,0))
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,15))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,0))
                 .build();
     }
 
@@ -85,8 +92,7 @@ public class CloseBlueAuto extends LinearOpMode {
         double transTime = 0;
         int pathState = 0;
         boolean flyOn=true;
-        int flyNum = 0;
-        int flySpeed = 1520;
+        int flySpeed = 1200;
         //endregion
 
         //region HARDWARE INFO
@@ -119,7 +125,7 @@ public class CloseBlueAuto extends LinearOpMode {
         follower.setStartingPose(startPose);
         createPaths();
         //endregion
-        hoodt.setIndex(4);
+        hoodt.setIndex(2);
 
         //WAIT
         waitForStart();
@@ -136,7 +142,6 @@ public class CloseBlueAuto extends LinearOpMode {
             if(flyOn){
                 fly1.setVelocity(flySpeed);
                 fly2.setVelocity(flySpeed);
-                flyNum++;
             }else{
                 fly1.setVelocity(0);
                 fly2.setVelocity(0);
@@ -150,10 +155,11 @@ public class CloseBlueAuto extends LinearOpMode {
                         follower.followPath(scorePath0,true);
                         pathState++;
                         sleep(1500);
+                        intake.setPower(1);
                         break;
                     //CYCLE ONE
                     case 3:
-                        flySpeed = 1500;
+//                        flySpeed = 500;
                         intake.setPower(1);
                         follower.followPath(pickupPath1,true);
                         pathState++;
@@ -179,7 +185,7 @@ public class CloseBlueAuto extends LinearOpMode {
                         pathState++;
                         break;
                     case 12:
-                        flySpeed = 1510;
+//                        flySpeed = 510;
                         follower.followPath(scorePath3,true);
                         pathState++;
                         break;

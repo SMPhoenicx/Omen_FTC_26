@@ -33,7 +33,6 @@ import android.util.Size;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.Servo;
@@ -53,8 +52,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@TeleOp(name="MainOpMode", group = "A")
-public class MainOpMode extends LinearOpMode
+@TeleOp(name="MainBlueOpMode", group = "A")
+public class MainBlueOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
 
@@ -231,7 +230,7 @@ public class MainOpMode extends LinearOpMode
                     hoodt.setIndex(2);
                 }
 
-                flySpeed = 5.47 * range + 933.0;
+                flySpeed = range > 67 ? 5.3 * range + 933.0 : 5.47 * range + 933.0;
 
                 telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
                 telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
@@ -321,59 +320,29 @@ public class MainOpMode extends LinearOpMode
                 facingGoal = !facingGoal;
             }
 
-           if (facingGoal) {
-               if (targetFound) {
-                   lastKnownBearing = desiredTag.ftcPose.bearing;
-                   lastKnownRange = desiredTag.ftcPose.range;
-                   lastDetectionTime = System.currentTimeMillis();
+           if (targetFound&&facingGoal) {
+               lastKnownBearing = desiredTag.ftcPose.bearing;
+               lastKnownRange = desiredTag.ftcPose.range;
+               lastDetectionTime = System.currentTimeMillis();
 
-                   double headingError = desiredTag.ftcPose.bearing;
+               double headingError = desiredTag.ftcPose.bearing;
 
-                   double deltaTime = pidTimer.seconds();
-                   double derivative = (headingError - lastHeadingError) / deltaTime;
-                   pidTimer.reset();
+               double deltaTime = pidTimer.seconds();
+               double derivative = (headingError - lastHeadingError) / deltaTime;
+               pidTimer.reset();
 
-                   if (Math.abs(headingError) < 2.0) {
-                       turn = 0;
-                   } else {
-                       turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
-                   }
-
-                   lastHeadingError = headingError;
-
-                   telemetry.addData("Tracking", "LIVE (err: %.1f°, deriv: %.2f)", headingError, derivative);
+               if (Math.abs(headingError) < 2.0) {
+                   turn = 0;
+                   facingGoal = false;
+               } else {
+                   turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
                }
-               else {
-                   //TRYING TO PREVENT A LOT OF TRACKING LOSS
-                   long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
 
-                   if (timeSinceLost < PREDICTION_TIMEOUT) {
-                       // Continue tracking last known bearing
-                       double headingError = lastKnownBearing;
+               lastHeadingError = headingError;
 
-                       double deltaTime = pidTimer.seconds();
-                       double derivative = (headingError - lastHeadingError) / deltaTime;
-                       pidTimer.reset();
-
-                       if (Math.abs(headingError) < 2.0) {
-                           turn = 0;
-                       } else {
-                           turn = (TURN_P * headingError) + (TURN_D * derivative);
-                           turn = Range.clip(turn * -1, -MAX_AUTO_TURN, MAX_AUTO_TURN);
-                       }
-
-                       lastHeadingError = headingError;
-
-                       telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
-                   } else {
-                       turn = 0;
-                       lastHeadingError = 0;
-                       pidTimer.reset();
-                       telemetry.addData("Tracking", "LOST");
-                   }
-               }
+               telemetry.addData("Tracking", "LIVE (err: %.1f°, deriv: %.2f)", headingError, derivative);
            }
-            else{
+           else{
                turn   = -gamepad1.right_stick_x;
                lastHeadingError = 0;
                pidTimer.reset();

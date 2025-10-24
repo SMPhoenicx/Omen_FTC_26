@@ -75,7 +75,7 @@ public class FarBlueAuto extends LinearOpMode {
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,15))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,17))
                 .build();
     }
 
@@ -85,8 +85,7 @@ public class FarBlueAuto extends LinearOpMode {
         double transTime = 0;
         int pathState = 0;
         boolean flyOn=true;
-        int flyNum = 0;
-        int flySpeed = 1520;
+        int flySpeed = 1600;
         //endregion
 
         //region HARDWARE INFO
@@ -136,7 +135,6 @@ public class FarBlueAuto extends LinearOpMode {
             if(flyOn){
                 fly1.setVelocity(flySpeed);
                 fly2.setVelocity(flySpeed);
-                flyNum++;
             }else{
                 fly1.setVelocity(0);
                 fly2.setVelocity(0);
@@ -153,7 +151,7 @@ public class FarBlueAuto extends LinearOpMode {
                         break;
                     //CYCLE ONE
                     case 3:
-                        flySpeed = 1500;
+                        flySpeed = 1450;
                         intake.setPower(1);
                         follower.followPath(pickupPath1,true);
                         pathState++;
@@ -164,6 +162,7 @@ public class FarBlueAuto extends LinearOpMode {
                         break;
                     //CYCLE TWO
                     case 7:
+                        flySpeed = 1500;
                         intake.setPower(1);
                         follower.followPath(pickupPath2,true);
                         pathState++;
@@ -179,7 +178,6 @@ public class FarBlueAuto extends LinearOpMode {
                         pathState++;
                         break;
                     case 12:
-                        flySpeed = 1510;
                         follower.followPath(scorePath3,true);
                         pathState++;
                         break;
