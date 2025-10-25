@@ -199,7 +199,11 @@ public class CloseRedAuto extends LinearOpMode {
                     case 10:
                     case 13:
                     case 14:
-                        intake.setPower(-1);
+                        if (pathState==1||pathState==2){
+                            intake.setPower(0);
+                        }else{
+                            intake.setPower(-1);
+                        }
                         trans.setPosition(1);
                         transTime = runtime.milliseconds();
                         pathState++;
