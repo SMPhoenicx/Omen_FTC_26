@@ -99,7 +99,7 @@ public class FarBlueAuto extends LinearOpMode {
         trans =  hardwareMap.get(Servo.class,"t1");
 
         //TOGGLESERVO
-        hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
+        hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300, 315, 330}, Servo.Direction.FORWARD, 270);
 
         //MODES
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -118,7 +118,7 @@ public class FarBlueAuto extends LinearOpMode {
         follower.setStartingPose(startPose);
         createPaths();
         //endregion
-        hoodt.setIndex(4);
+        hoodt.setIndex(6);
 
         //WAIT
         waitForStart();
@@ -145,9 +145,10 @@ public class FarBlueAuto extends LinearOpMode {
                 switch(pathState){
                     //CYCLE ZERO
                     case 0:
+                        intake.setPower(1);
                         follower.followPath(scorePath0,true);
                         pathState++;
-                        sleep(1500);
+                        sleep(2500);
                         break;
                     //CYCLE ONE
                     case 3:

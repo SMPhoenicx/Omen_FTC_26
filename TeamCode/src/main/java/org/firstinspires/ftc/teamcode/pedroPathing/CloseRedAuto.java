@@ -37,13 +37,13 @@ public class CloseRedAuto extends LinearOpMode {
     //endregion
 
     public void createPoses(){
-        startPose = new Pose(121,129,Math.toRadians(45));
-        pickup1 = new Pose(105.5,94,Math.toRadians(0));
-        pickup2 = new Pose(109,94,Math.toRadians(0));
-        pickup3 = new Pose(113,94,Math.toRadians(0));
-        pickupCheck = new Pose(102,93,Math.toRadians(0));
-        shoot1 = new Pose(102,94,Math.toRadians(45));
-        shoot0 = new Pose(101,109,Math.toRadians(45));
+        startPose = new Pose(144-23,129,Math.toRadians(45));
+        pickup1 = new Pose(144-38.5,94,Math.toRadians(0));
+        pickup2 = new Pose(144-34,94,Math.toRadians(0));
+        pickup3 = new Pose(144-29,94,Math.toRadians(0));
+        pickupCheck = new Pose(144-42,93,Math.toRadians(0));
+        shoot1 = new Pose(144-42,94,Math.toRadians(45));
+        shoot0 = new Pose(144-43,109,Math.toRadians(45));
     }
 
     public void createPaths(){
@@ -93,6 +93,7 @@ public class CloseRedAuto extends LinearOpMode {
         int pathState = 0;
         boolean flyOn=true;
         int flySpeed = 1200;
+        boolean running = true;
         //endregion
 
         //region HARDWARE INFO
@@ -135,7 +136,7 @@ public class CloseRedAuto extends LinearOpMode {
             follower.update();
 
             double timeChange = runtime.milliseconds() - transTime;
-            if(timeChange >= 250) {
+            if(timeChange >= 250&&running) {
                 trans.setPosition(0);
             }
 
@@ -198,13 +199,15 @@ public class CloseRedAuto extends LinearOpMode {
                     case 10:
                     case 13:
                     case 14:
-                        intake.setPower(0);
+                        intake.setPower(-1);
                         trans.setPosition(1);
                         transTime = runtime.milliseconds();
                         pathState++;
                         break;
                     default:
+                        running=false;
                         flyOn=false;
+                        intake.setPower(0);
                         telemetry.addLine("Done!");
                         break;
                 }
