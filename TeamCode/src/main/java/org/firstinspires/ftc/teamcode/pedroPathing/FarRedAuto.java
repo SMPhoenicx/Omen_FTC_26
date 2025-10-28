@@ -63,19 +63,19 @@ public class FarRedAuto extends LinearOpMode {
                 .build();
         scorePath0 = follower.pathBuilder()
                 .addPath(new BezierLine(startPose,shoot0))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,134))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,131))
                 .build();
         scorePath1 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup1,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,134))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,131))
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,129))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,126))
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,127))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,126))
                 .build();
     }
 
@@ -85,7 +85,7 @@ public class FarRedAuto extends LinearOpMode {
         double transTime = 0;
         int pathState = 0;
         boolean flyOn=true;
-        int flySpeed = 1600;
+        int flySpeed = 1570;
         //endregion
 
         //region HARDWARE INFO
@@ -151,7 +151,7 @@ public class FarRedAuto extends LinearOpMode {
                         break;
                     //CYCLE ONE
                     case 3:
-                        flySpeed = 1450;
+                        flySpeed = 1420;
                         intake.setPower(1);
                         follower.followPath(pickupPath1,true);
                         pathState++;
@@ -162,7 +162,7 @@ public class FarRedAuto extends LinearOpMode {
                         break;
                     //CYCLE TWO
                     case 7:
-                        flySpeed = 1500;
+                        flySpeed = 1450;
                         intake.setPower(1);
                         follower.followPath(pickupPath2,true);
                         pathState++;
@@ -190,13 +190,18 @@ public class FarRedAuto extends LinearOpMode {
                     case 10:
                     case 13:
                     case 14:
-                        intake.setPower(0);
+                        if (pathState==1||pathState==2){
+                            intake.setPower(0);
+                        }else{
+                            intake.setPower(-1);
+                        }
                         trans.setPosition(1);
                         transTime = runtime.milliseconds();
                         pathState++;
                         break;
                     default:
                         flyOn=false;
+                        intake.setPower(0);
                         telemetry.addLine("Done!");
                         break;
                 }
