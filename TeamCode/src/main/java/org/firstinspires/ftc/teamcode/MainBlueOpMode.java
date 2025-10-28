@@ -186,9 +186,9 @@ public class MainBlueOpMode extends LinearOpMode
         telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
 
+        hood.setPosition(0);
         //WAIT
         waitForStart();
-        hood.setPosition(0);
         runtime.reset();
 
         while (opModeIsActive())
