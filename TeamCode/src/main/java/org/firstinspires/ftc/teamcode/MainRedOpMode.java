@@ -31,6 +31,10 @@ package org.firstinspires.ftc.teamcode;
 
 import android.util.Size;
 
+import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.Pose;
+import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -45,6 +49,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.Exposur
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
@@ -57,6 +62,9 @@ import java.util.concurrent.TimeUnit;
 public class MainRedOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
+    private Follower follower;
+    PathChain endgame = null;
+    Pose endgamePose = new Pose(144-103,37.5,Math.toRadians(90));
 
     //region HARDWARE DECLARATIONS
     private DcMotor frontLeftDrive = null;
@@ -110,6 +118,10 @@ public class MainRedOpMode extends LinearOpMode
         boolean flyAtSpeed = false;
         double lastTime = 0;
         double transTime = 0;
+
+        //APRIL TAG LOCALIZE
+        boolean localizeApril = true;
+        double aprilLocalizationTimeout=0;
         //endregion
 
         //region CONTROL VARS
@@ -178,6 +190,10 @@ public class MainRedOpMode extends LinearOpMode
 
         //endregion
 
+        //FOLLOWER SHIT
+        follower = Constants.createFollower(hardwareMap);
+        follower.setStartingPose(new Pose(23,120,Math.toRadians(90)));//lowkey this pos doesnt matter
+
         //INIT ACTIONS
         setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
 
@@ -193,11 +209,15 @@ public class MainRedOpMode extends LinearOpMode
 
         while (opModeIsActive())
         {
+            follower.update();
+
             //region CAMERA
             targetFound = false;
             desiredTag  = null;
 
-            // Step through the list of detected tags and look for a matching tag
+            //like so localization averages if both goals are in view
+            Pose cameraLocalize = null;
+
             List<AprilTagDetection> currentDetections = aprilTag.getDetections();
             for (AprilTagDetection detection : currentDetections) {
                 // Look to see if we have size info on this tag.
@@ -207,12 +227,21 @@ public class MainRedOpMode extends LinearOpMode
                         // Yes, we want to use this tag.
                         desiredTag = detection;
                         targetFound = true;
-                        break;
                     } else {
                         // This tag is in the library, but we do not want to track it right now.
                         telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
                     }
-                } else {
+                    //LOCALIZATION STUFF
+                    if (!detection.metadata.name.contains("Obelisk")&&localizeApril&&runtime.milliseconds()-aprilLocalizationTimeout>50) {
+                        if(cameraLocalize==null) {
+                            cameraLocalize = new Pose(detection.robotPose.getPosition().y + 72, -detection.robotPose.getPosition().x + 72, detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS));
+                        }else{
+                            cameraLocalize = new Pose((cameraLocalize.getX()+detection.robotPose.getPosition().y + 72)/2,(cameraLocalize.getY()+ -detection.robotPose.getPosition().x + 72)/2,(cameraLocalize.getHeading()+detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS))/2);
+                        }
+                        follower.setPose(cameraLocalize);
+                        aprilLocalizationTimeout=runtime.milliseconds();
+                    }
+                }else {
                     // This tag is NOT in the library, so we don't have enough information to track to it.
                     telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
                 }
@@ -380,12 +409,31 @@ public class MainRedOpMode extends LinearOpMode
             }
             //endregion
 
+            //region ENDGAME
+            if(gamepad1.b&&!b1Pressed&&!follower.isBusy()&&localizeApril){
+                endgame = follower.pathBuilder()
+                        .addPath(new BezierLine(follower.getPose(),endgamePose))
+                        .setLinearHeadingInterpolation(follower.getHeading(),endgamePose.getHeading())
+                        .build();
+                follower.followPath(endgame,true);
+            }
+            if(gamepad1.b&&!b1Pressed&&!follower.isBusy()&&!localizeApril){
+                follower.breakFollowing();
+                localizeApril=true;
+            }
+            if(endgame!=null&&!follower.isBusy()){
+                localizeApril = false;
+            }
+            //endregion
+
             //MANUAL
             drive = -gamepad1.left_stick_y;
             strafe = -gamepad1.left_stick_x;
 
             //DRIVE
-            moveRobot(drive, strafe, turn);
+            if(!follower.isBusy()){
+                moveRobot(drive, strafe, turn);
+            }
 
             //region CONTROL RESETS
             b1Pressed = gamepad1.b;
@@ -418,6 +466,7 @@ public class MainRedOpMode extends LinearOpMode
             telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
             telemetry.addData("Flying at correct power", flyAtSpeed);
             telemetry.addData("Hood angle:", "%.3f", hoodt.getServo().getPosition());
+            telemetry.addData("Camera Localized Pos","x: %.2f y: %.2f heading: %.2f",follower.getPose().getX(),follower.getPose().getY(),Math.toDegrees(follower.getHeading()));
             telemetry.update();
             //endregion
 
