@@ -37,6 +37,7 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -77,6 +78,9 @@ public class MainRedOpMode extends LinearOpMode
     private Servo led = null;
     private Servo hood = null;
     private Servo trans = null;
+    private CRServo spin = null;
+    // MARK:- ENCODERS / pots
+    private AnalogInput spinAnalog;
 
     // CAMERA VARS
     private static final int DESIRED_TAG_ID = 24;
@@ -98,6 +102,25 @@ public class MainRedOpMode extends LinearOpMode
     double TURN_D = 0.002;
     final double TURN_GAIN   =  0.02  ;
     final double MAX_AUTO_TURN  = 0.4;
+    //endregion
+
+    //region CAROUSEL PIDF STUFF
+    private  double pidKp = 0.0001;    // start small, increase until responsive
+    private  double pidKi = 0.0;  // tiny integral (if needed)
+    private  double pidKd = 0.0;  // derivative to damp oscillation
+    private  double pidKf = 0.05;    // small directional feedforward to overcome stiction
+
+    private double integral = 0.0;
+    private double lastError = 0.0;
+    private double integralLimit = 500.0; // clamp integral
+
+    private double pidLastTimeMs = 0.0; // ms timestamp for PID dt
+    // tolerance and deadband
+    private final double positionToleranceDeg = 2.0;
+    private final double outputDeadband = 0.03;
+    // --- Carousel preset positions (6 presets, every 60 degrees) ---
+    private final double[] CAROUSEL_POSITIONS = {0.0, 60.0, 120.0, 180.0, 240.0, 300.0};
+    private int carouselIndex = 0;
     //endregion
 
     @Override public void runOpMode()
@@ -162,9 +185,14 @@ public class MainRedOpMode extends LinearOpMode
         intake = hardwareMap.get(DcMotor.class, "in");
 
         //SERVOS
+        spin = hardwareMap.get(CRServo.class, "spin");
         led = hardwareMap.get(Servo.class,"led");
         hood = hardwareMap.get(Servo.class,"hood");
         trans =  hardwareMap.get(Servo.class,"t1");
+
+        //ENCODERS
+        spinAnalog = hardwareMap.get(AnalogInput.class, "espin");
+
 
         //TOGGLESERVO
         ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
@@ -187,6 +215,7 @@ public class MainRedOpMode extends LinearOpMode
         fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(Servo.Direction.REVERSE);
+        spin.setDirection(CRServo.Direction.FORWARD);
 
         //endregion
 
@@ -210,6 +239,11 @@ public class MainRedOpMode extends LinearOpMode
         while (opModeIsActive())
         {
             follower.update();
+            pidLastTimeMs = runtime.milliseconds();
+
+            double lastPAdjustTime = 0;
+            double lastIAdjustTime = 0;
+            double lastDAdjustTime = 0;
 
             //region CAMERA
             targetFound = false;
@@ -343,6 +377,60 @@ public class MainRedOpMode extends LinearOpMode
             if(timeChange >= 250) {
                 trans.setPosition(0);
             }
+            //endregion
+
+            //region ADJUST CAROUSEL PIDF
+            double nowMs = runtime.milliseconds();
+            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
+            if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
+            pidLastTimeMs = nowMs;
+
+            // ENCODING FOR SERVOS
+            double volt = spinAnalog.getVoltage();
+
+            // === PIDF tuning via Gamepad2 ===
+            double adjustStepP = 0.00002;
+            double adjustStepI = 0.00001;
+            double adjustStepD = 0.0002;
+            double debounceTime = 250; // milliseconds
+
+            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
+                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
+                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
+                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+            }
+
+
+            // Safety clamp
+            pidKp = Math.max(0, pidKp);
+            pidKi = Math.max(0, pidKi);
+            pidKd = Math.max(0, pidKd);
+
+            // Display PID constants on telemetry
+            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
+            telemetry.addData("kP", "%.4f", pidKp);
+            telemetry.addData("kI", "%.4f", pidKi);
+            telemetry.addData("kD", "%.4f", pidKd);
+            //endregion
+
+            //region CAROUSEL
+            if (gamepad1.dpad_right && !right1Pressed) {
+                carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
+            }
+            if (gamepad1.dpad_left && !left1Pressed) {
+                carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+            }
+
+            // always run PID towards the current selected preset while opMode active
+            double targetAngle = CAROUSEL_POSITIONS[carouselIndex];
+            updateCarouselPID(targetAngle, dtSec);
             //endregion
 
             //region FACE GOAL
@@ -502,6 +590,48 @@ public class MainRedOpMode extends LinearOpMode
         backRightDrive.setPower(backRightPower);
     }
 
+    private void updateCarouselPID(double targetAngle, double dt) {
+        // read angles 0..360
+        double angle = mapVoltageToAngle360(spinAnalog.getVoltage(), 0.01, 3.29);
+
+        // compute shortest signed error [-180,180]
+        double error = angleError(targetAngle, angle);
+
+        // integral with anti-windup
+        integral += error * dt;
+        integral = clamp(integral, -integralLimit, integralLimit);
+
+        // derivative
+        double d = (error - lastError) / Math.max(dt, 1e-6);
+
+        // PIDF output (interpreted as servo power)
+        double out = pidKp * error + pidKi * integral + pidKd * d;
+
+        // small directional feedforward to overcome stiction when error significant
+        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
+
+        // clamp to [-1,1] and apply deadband
+        out = Range.clip(out, -1.0, 1.0);
+        if (Math.abs(out) < outputDeadband) out = 0.0;
+
+        // if within tolerance, zero outputs and decay integrator to avoid bumping
+        if (Math.abs(error) <= positionToleranceDeg) {
+            out = 0.0;
+            integral *= 0.2;
+        }
+
+        // apply powers (flip one if your servo is mirrored - change sign if needed)
+        spin.setPower(out);
+
+        // store errors for next derivative calculation
+        lastError = error;
+
+        // telemetry for PID (keeps concise, add more if you want)
+        telemetry.addData("Carousel Target", "%.1f°", targetAngle);
+        telemetry.addData("spin", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
+
+    }
+
     private void initAprilTag() {
 
         // Create the AprilTag processor.
@@ -587,5 +717,21 @@ public class MainRedOpMode extends LinearOpMode
         aprilTag.setDecimation(newDecimation);
         telemetry.addData("Decimation: ", "%d", newDecimation);
 
+    }
+    private double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+    private double mapVoltageToAngle360(double v, double vMin, double vMax) {
+        double angle = 360.0 * (v - vMin) / (vMax - vMin);
+        angle = (angle + 360) % 360;
+        return angle;
+    }
+
+    // Compute shortest signed difference between two angles
+    private double angleError(double target, double current) {
+        double error = target - current;
+        if (error > 180) error -= 360;
+        if (error < -180) error += 360;
+        return error;
     }
 }
