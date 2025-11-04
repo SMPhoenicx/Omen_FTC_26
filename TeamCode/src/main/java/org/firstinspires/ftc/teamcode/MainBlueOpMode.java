@@ -108,10 +108,10 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     //region CAROUSEL PIDF STUFF
-    private  double pidKp = 0.0051;    // start small, increase until responsive
-    private  double pidKi = 0.0;  // tiny integral (if needed)
-    private  double pidKd = 0.00001;  // derivative to damp oscillation
-    private  double pidKf = 0.0;//originally 0.05    // small directional feedforward to overcome stiction
+    private  double pidKp = 0.0115;    // start small, increase until responsive
+    private  double pidKi = 0.00166;  // tiny integral (if needed)
+    private  double pidKd = 0.00005;  // derivative to damp oscillation
+    private  double pidKf = 0.0;    // small directional feedforward to overcome stiction
 
     private double integral = 0.0;
     private double lastError = 0.0;
@@ -153,6 +153,7 @@ public class MainBlueOpMode extends LinearOpMode
         double lastPAdjustTime = 0;
         double lastIAdjustTime = 0;
         double lastDAdjustTime = 0;
+        double lastFAdjustTime = 0;
         //endregion
 
         //region CONTROL VARS
@@ -392,6 +393,7 @@ public class MainBlueOpMode extends LinearOpMode
             double adjustStepP = 0.0002;
             double adjustStepI = 0.00001;
             double adjustStepD = 0.00001;
+            double adjustStepF = 0.002;
             double debounceTime = 50; // milliseconds
 
             if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
@@ -406,18 +408,24 @@ public class MainBlueOpMode extends LinearOpMode
                 if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
                 if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
             }
+            if (runtime.milliseconds() - lastFAdjustTime > debounceTime) {
+                if (gamepad2.dpad_right) { pidKf += adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.dpad_left) { pidKf -= adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
+            }
 
 
             // Safety clamp
             pidKp = Math.max(0, pidKp);
             pidKi = Math.max(0, pidKi);
             pidKd = Math.max(0, pidKd);
+            pidKf = Math.max(0, pidKf);
 
             // Display PID constants on telemetry
             telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
             telemetry.addData("kP", "%.6f", pidKp);
             telemetry.addData("kI", "%.6f", pidKi);
             telemetry.addData("kD", "%.6f", pidKd);
+            telemetry.addData("kF", "%.6f", pidKf);
             //endregion
 
             //region CAROUSEL
@@ -627,6 +635,7 @@ public class MainBlueOpMode extends LinearOpMode
         lastError = error;
 
         // telemetry for PID (keeps concise, add more if you want)
+        telemetry.addData("integral",integral);
         telemetry.addData("Carousel Target", "%.1f°", targetAngle);
         telemetry.addData("SPIN VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
 
