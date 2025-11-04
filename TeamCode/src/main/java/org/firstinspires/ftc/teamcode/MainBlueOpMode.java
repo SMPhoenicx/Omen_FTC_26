@@ -41,6 +41,8 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
+import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
@@ -77,6 +79,8 @@ public class MainBlueOpMode extends LinearOpMode
     private CRServo spin = null;
     // ENCODERS
     private AnalogInput spinAnalog;
+    //COLOR
+    private NormalizedColorSensor color = null;
     //endregion
 
     //region CAMERA VARS
@@ -124,6 +128,7 @@ public class MainBlueOpMode extends LinearOpMode
     // --- Carousel preset positions (6 presets, every 60 degrees) ---
     private final double[] CAROUSEL_POSITIONS = {42.0, 102.0, 162.0, 222.0, 282.0, 342.0};
     private int carouselIndex = 0;
+    private char[] savedBalls = {0,0,0};//0 is empty, p is purple, g is green
     //endregion
 
     @Override public void runOpMode()
@@ -202,6 +207,8 @@ public class MainBlueOpMode extends LinearOpMode
         //ENCODERS
         spinAnalog = hardwareMap.get(AnalogInput.class, "espin");
 
+        //COLOR SENSOR
+        color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
 
         //TOGGLESERVO
 //        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
@@ -384,48 +391,48 @@ public class MainBlueOpMode extends LinearOpMode
             double nowMs = runtime.milliseconds();
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
             if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
-            pidLastTimeMs = nowMs;
-
-            // ENCODING FOR SERVOS
-            double volt = spinAnalog.getVoltage();
-
-            // === PIDF tuning via Gamepad2 ===
-            double adjustStepP = 0.0002;
-            double adjustStepI = 0.00001;
-            double adjustStepD = 0.00001;
-            double adjustStepF = 0.002;
-            double debounceTime = 50; // milliseconds
-
-            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
-                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
-                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
-                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastFAdjustTime > debounceTime) {
-                if (gamepad2.dpad_right) { pidKf += adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.dpad_left) { pidKf -= adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
-            }
-
-
-            // Safety clamp
-            pidKp = Math.max(0, pidKp);
-            pidKi = Math.max(0, pidKi);
-            pidKd = Math.max(0, pidKd);
-            pidKf = Math.max(0, pidKf);
-
-            // Display PID constants on telemetry
-            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
-            telemetry.addData("kP", "%.6f", pidKp);
-            telemetry.addData("kI", "%.6f", pidKi);
-            telemetry.addData("kD", "%.6f", pidKd);
-            telemetry.addData("kF", "%.6f", pidKf);
+//            pidLastTimeMs = nowMs;
+//
+//            // ENCODING FOR SERVOS
+//            double volt = spinAnalog.getVoltage();
+//
+//            // === PIDF tuning via Gamepad2 ===
+//            double adjustStepP = 0.0002;
+//            double adjustStepI = 0.00001;
+//            double adjustStepD = 0.00001;
+//            double adjustStepF = 0.002;
+//            double debounceTime = 50; // milliseconds
+//
+//            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
+//                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+//                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+//            }
+//            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
+//                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+//                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+//            }
+//            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
+//                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+//                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+//            }
+//            if (runtime.milliseconds() - lastFAdjustTime > debounceTime) {
+//                if (gamepad2.dpad_right) { pidKf += adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
+//                if (gamepad2.dpad_left) { pidKf -= adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
+//            }
+//
+//
+//            // Safety clamp
+//            pidKp = Math.max(0, pidKp);
+//            pidKi = Math.max(0, pidKi);
+//            pidKd = Math.max(0, pidKd);
+//            pidKf = Math.max(0, pidKf);
+//
+//            // Display PID constants on telemetry
+//            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
+//            telemetry.addData("kP", "%.6f", pidKp);
+//            telemetry.addData("kI", "%.6f", pidKi);
+//            telemetry.addData("kD", "%.6f", pidKd);
+//            telemetry.addData("kF", "%.6f", pidKf);
             //endregion
 
             //region CAROUSEL
@@ -503,6 +510,23 @@ public class MainBlueOpMode extends LinearOpMode
                 lastHeadingError = 0;
                 pidTimer.reset();
             }
+            //endregion
+
+            //region COLOR SENSOR
+            char detectedColor = getDetectedColor();
+            telemetry.addData("Detected Color",detectedColor);
+
+            if(carouselIndex==0) savedBalls[0] = detectedColor;
+            if(carouselIndex==2) savedBalls[1] = detectedColor;
+            if(carouselIndex==4) savedBalls[2] = detectedColor;
+
+            if(tranOn){
+                if(carouselIndex==1) savedBalls[2] = 0;
+                if(carouselIndex==3) savedBalls[0] = 0;
+                if(carouselIndex==5) savedBalls[1] = 0;
+            }
+
+            telemetry.addData("Saved Balls","0: %1c, 1: %1c, 2: %1c",savedBalls[0],savedBalls[1],savedBalls[2]);
             //endregion
 
             //region ENDGAME
@@ -639,6 +663,24 @@ public class MainBlueOpMode extends LinearOpMode
         telemetry.addData("Carousel Target", "%.1f°", targetAngle);
         telemetry.addData("SPIN VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
 
+    }
+
+    public char getDetectedColor(){
+        NormalizedRGBA colors = color.getNormalizedColors();
+        float nRed, nGreen, nBlue;
+        nRed = colors.red/colors.alpha;
+        nGreen = colors.green/colors.alpha;
+        nBlue = colors.blue/colors.alpha;
+
+//        telemetry.addData("Colors","Red: %3f, Green: %3f, Blue: %3f",nRed,nGreen,nBlue);
+
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
+        }
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
+            return 'g';
+        }
+        return 0;
     }
 
     private void initAprilTag() {
