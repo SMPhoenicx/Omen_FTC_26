@@ -63,19 +63,19 @@ public class FarBlueAuto extends LinearOpMode {
                 .build();
         scorePath0 = follower.pathBuilder()
                 .addPath(new BezierLine(startPose,shoot0))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,10))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,13))
                 .build();
         scorePath1 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup1,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,10))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,13))
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,15))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,18))
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,17))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,18))
                 .build();
     }
 
@@ -85,7 +85,7 @@ public class FarBlueAuto extends LinearOpMode {
         double transTime = 0;
         int pathState = 0;
         boolean flyOn=true;
-        int flySpeed = 1600;
+        int flySpeed = 1570;
         //endregion
 
         //region HARDWARE INFO
@@ -99,7 +99,7 @@ public class FarBlueAuto extends LinearOpMode {
         trans =  hardwareMap.get(Servo.class,"t1");
 
         //TOGGLESERVO
-        hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
+        hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300, 315, 330}, Servo.Direction.FORWARD, 270);
 
         //MODES
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -118,7 +118,7 @@ public class FarBlueAuto extends LinearOpMode {
         follower.setStartingPose(startPose);
         createPaths();
         //endregion
-        hoodt.setIndex(4);
+        hoodt.setIndex(6);
 
         //WAIT
         waitForStart();
@@ -145,13 +145,14 @@ public class FarBlueAuto extends LinearOpMode {
                 switch(pathState){
                     //CYCLE ZERO
                     case 0:
+                        intake.setPower(1);
                         follower.followPath(scorePath0,true);
                         pathState++;
-                        sleep(1500);
+                        sleep(2500);
                         break;
                     //CYCLE ONE
                     case 3:
-                        flySpeed = 1450;
+                        flySpeed = 1420;
                         intake.setPower(1);
                         follower.followPath(pickupPath1,true);
                         pathState++;
@@ -162,7 +163,7 @@ public class FarBlueAuto extends LinearOpMode {
                         break;
                     //CYCLE TWO
                     case 7:
-                        flySpeed = 1500;
+                        flySpeed = 1450;
                         intake.setPower(1);
                         follower.followPath(pickupPath2,true);
                         pathState++;
@@ -190,13 +191,18 @@ public class FarBlueAuto extends LinearOpMode {
                     case 10:
                     case 13:
                     case 14:
-                        intake.setPower(0);
+                        if (pathState==1||pathState==2){
+                            intake.setPower(0);
+                        }else{
+                            intake.setPower(-1);
+                        }
                         trans.setPosition(1);
                         transTime = runtime.milliseconds();
                         pathState++;
                         break;
                     default:
                         flyOn=false;
+                        intake.setPower(0);
                         telemetry.addLine("Done!");
                         break;
                 }

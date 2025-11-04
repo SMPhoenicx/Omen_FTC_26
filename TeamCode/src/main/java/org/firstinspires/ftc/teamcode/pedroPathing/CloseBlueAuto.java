@@ -22,8 +22,8 @@ public class CloseBlueAuto extends LinearOpMode {
     //region PEDRO VARS
     private Follower follower;
     private Timer pathTimer, actionTimer, opModeTimer;
-    private Pose startPose, pickup1, pickup2, pickup3, pickupCheck, shoot1, shoot0;
-    private PathChain pickupPath1, pickupPath2, pickupPath3, scorePath0, scorePath1, scorePath2, scorePath3;
+    private Pose startPose, pickup1, pickup2, pickup3, pickupCheck, shoot1, shoot0, movePoint;
+    private PathChain pickupPath1, pickupPath2, pickupPath3, scorePath0, scorePath1, scorePath2, scorePath3, moveScore;
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -38,12 +38,13 @@ public class CloseBlueAuto extends LinearOpMode {
 
     public void createPoses(){
         startPose = new Pose(23,129,Math.toRadians(135));
-        pickup1 = new Pose(38.5,94,Math.toRadians(180));
-        pickup2 = new Pose(35,94,Math.toRadians(180));
-        pickup3 = new Pose(31,94,Math.toRadians(180));
-        pickupCheck = new Pose(42,93,Math.toRadians(180));
+        pickup1 = new Pose(41,95,Math.toRadians(180));
+        pickup2 = new Pose(39,93,Math.toRadians(180));
+        pickup3 = new Pose(26,93,Math.toRadians(180));
+        pickupCheck = new Pose(43,94,Math.toRadians(180));
         shoot1 = new Pose(42,94,Math.toRadians(135));
         shoot0 = new Pose(43,109,Math.toRadians(135));
+        movePoint = new Pose(42,85,Math.toRadians(135));
     }
 
     public void createPaths(){
@@ -84,6 +85,10 @@ public class CloseBlueAuto extends LinearOpMode {
                 .addPath(new BezierLine(pickup3,shoot1))
                 .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,0))
                 .build();
+        moveScore = follower.pathBuilder()
+                .addPath(new BezierLine(shoot1,movePoint))
+                .setConstantHeadingInterpolation(movePoint.getHeading())
+                .build();
     }
 
     @Override
@@ -92,7 +97,8 @@ public class CloseBlueAuto extends LinearOpMode {
         double transTime = 0;
         int pathState = 0;
         boolean flyOn=true;
-        int flySpeed = 1200;
+        int flySpeed = 1150;
+        boolean running = true;
         //endregion
 
         //region HARDWARE INFO
@@ -135,7 +141,7 @@ public class CloseBlueAuto extends LinearOpMode {
             follower.update();
 
             double timeChange = runtime.milliseconds() - transTime;
-            if(timeChange >= 250) {
+            if(timeChange >= 250&&running) {
                 trans.setPosition(0);
             }
 
@@ -198,13 +204,23 @@ public class CloseBlueAuto extends LinearOpMode {
                     case 10:
                     case 13:
                     case 14:
-                        intake.setPower(0);
+                        if (pathState==1||pathState==2){
+                            intake.setPower(0);
+                        }else{
+                            intake.setPower(-1);
+                        }
                         trans.setPosition(1);
                         transTime = runtime.milliseconds();
                         pathState++;
                         break;
+                    case 15:
+                        follower.followPath(moveScore);
+                        pathState++;
+                        break;
                     default:
+                        running=false;
                         flyOn=false;
+                        intake.setPower(0);
                         telemetry.addLine("Done!");
                         break;
                 }

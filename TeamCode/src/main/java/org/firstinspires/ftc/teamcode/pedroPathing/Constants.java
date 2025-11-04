@@ -52,10 +52,10 @@ public class Constants {
             .strafePodX(-7)
             .leftEncoder_HardwareMapName("skib")
             .rightEncoder_HardwareMapName("fl")
-            .strafeEncoder_HardwareMapName("br")
+            .strafeEncoder_HardwareMapName("in")
             .leftEncoderDirection(Encoder.REVERSE)
             .rightEncoderDirection(Encoder.FORWARD)
-            .strafeEncoderDirection(Encoder.REVERSE)
+            .strafeEncoderDirection(Encoder.FORWARD)
             .forwardTicksToInches(0.0029906905942694607)
             .strafeTicksToInches(-0.0029906173594936272)
             .turnTicksToInches(0.0028762739224952347);

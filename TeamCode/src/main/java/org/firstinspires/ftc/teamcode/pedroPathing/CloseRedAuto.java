@@ -22,8 +22,8 @@ public class CloseRedAuto extends LinearOpMode {
     //region PEDRO VARS
     private Follower follower;
     private Timer pathTimer, actionTimer, opModeTimer;
-    private Pose startPose, pickup1, pickup2, pickup3, pickupCheck, shoot1, shoot0;
-    private PathChain pickupPath1, pickupPath2, pickupPath3, scorePath0, scorePath1, scorePath2, scorePath3;
+    private Pose startPose, pickup1, pickup2, pickup3, pickupCheck, shoot1, shoot0, movePoint;
+    private PathChain pickupPath1, pickupPath2, pickupPath3, scorePath0, scorePath1, scorePath2, scorePath3, moveScore;
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -37,13 +37,14 @@ public class CloseRedAuto extends LinearOpMode {
     //endregion
 
     public void createPoses(){
-        startPose = new Pose(121,129,Math.toRadians(45));
-        pickup1 = new Pose(105.5,94,Math.toRadians(0));
-        pickup2 = new Pose(109,94,Math.toRadians(0));
-        pickup3 = new Pose(113,94,Math.toRadians(0));
-        pickupCheck = new Pose(102,93,Math.toRadians(0));
-        shoot1 = new Pose(102,94,Math.toRadians(45));
-        shoot0 = new Pose(101,109,Math.toRadians(45));
+        startPose = new Pose(144-23,129,Math.toRadians(45));
+        pickup1 = new Pose(144-41,95,Math.toRadians(0));
+        pickup2 = new Pose(144-39,93,Math.toRadians(0));
+        pickup3 = new Pose(144-26,93,Math.toRadians(0));
+        pickupCheck = new Pose(144-43,94,Math.toRadians(0));
+        shoot1 = new Pose(144-42,94,Math.toRadians(45));
+        shoot0 = new Pose(144-43,109,Math.toRadians(45));
+        movePoint = new Pose(144-42,85,Math.toRadians(45));
     }
 
     public void createPaths(){
@@ -84,6 +85,10 @@ public class CloseRedAuto extends LinearOpMode {
                 .addPath(new BezierLine(pickup3,shoot1))
                 .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,144))
                 .build();
+        moveScore = follower.pathBuilder()
+                .addPath(new BezierLine(shoot1,movePoint))
+                .setConstantHeadingInterpolation(movePoint.getHeading())
+                .build();
     }
 
     @Override
@@ -92,7 +97,8 @@ public class CloseRedAuto extends LinearOpMode {
         double transTime = 0;
         int pathState = 0;
         boolean flyOn=true;
-        int flySpeed = 1200;
+        int flySpeed = 1150;
+        boolean running = true;
         //endregion
 
         //region HARDWARE INFO
@@ -135,7 +141,7 @@ public class CloseRedAuto extends LinearOpMode {
             follower.update();
 
             double timeChange = runtime.milliseconds() - transTime;
-            if(timeChange >= 250) {
+            if(timeChange >= 250&&running) {
                 trans.setPosition(0);
             }
 
@@ -198,13 +204,23 @@ public class CloseRedAuto extends LinearOpMode {
                     case 10:
                     case 13:
                     case 14:
-                        intake.setPower(0);
+                        if (pathState==1||pathState==2){
+                            intake.setPower(0);
+                        }else{
+                            intake.setPower(-1);
+                        }
                         trans.setPosition(1);
                         transTime = runtime.milliseconds();
                         pathState++;
                         break;
+                    case 15:
+                        follower.followPath(moveScore);
+                        pathState++;
+                        break;
                     default:
+                        running=false;
                         flyOn=false;
+                        intake.setPower(0);
                         telemetry.addLine("Done!");
                         break;
                 }
