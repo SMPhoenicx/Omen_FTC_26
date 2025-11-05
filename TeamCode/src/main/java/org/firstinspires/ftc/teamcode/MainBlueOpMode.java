@@ -41,6 +41,8 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
+import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
@@ -74,9 +76,13 @@ public class MainBlueOpMode extends LinearOpMode
     private DcMotor trans = null;
     private Servo led = null;
     private Servo hood = null;
-    private CRServo spin = null;
+    private CRServo spin1 = null;
+    private CRServo spin2 = null;
     // ENCODERS
-    private AnalogInput spinAnalog;
+    private AnalogInput spinEncoder1;
+    private AnalogInput spinEncoder2;
+    //COLOR
+    private NormalizedColorSensor color = null;
     //endregion
 
     //region CAMERA VARS
@@ -113,8 +119,10 @@ public class MainBlueOpMode extends LinearOpMode
     private  double pidKd = 0.00005;  // derivative to damp oscillation
     private  double pidKf = 0.0;    // small directional feedforward to overcome stiction
 
-    private double integral = 0.0;
-    private double lastError = 0.0;
+    private double integral1 = 0.0;
+    private double integral2 = 0.0;
+    private double lastError1 = 0.0;
+    private double lastError2 = 0.0;
     private double integralLimit = 500.0; // clamp integral
 
     private double pidLastTimeMs = 0.0; // ms timestamp for PID dt
@@ -124,6 +132,7 @@ public class MainBlueOpMode extends LinearOpMode
     // --- Carousel preset positions (6 presets, every 60 degrees) ---
     private final double[] CAROUSEL_POSITIONS = {42.0, 102.0, 162.0, 222.0, 282.0, 342.0};
     private int carouselIndex = 0;
+    private char[] savedBalls = {'n','n','n'};//n is none (empty), p is purple, g is green  --  side note i did not realize this says nnn when the carousels empty lmao
     //endregion
 
     @Override public void runOpMode()
@@ -154,6 +163,7 @@ public class MainBlueOpMode extends LinearOpMode
         double lastIAdjustTime = 0;
         double lastDAdjustTime = 0;
         double lastFAdjustTime = 0;
+        double LedDelayTime = 0;
         //endregion
 
         //region CONTROL VARS
@@ -194,14 +204,18 @@ public class MainBlueOpMode extends LinearOpMode
         trans = hardwareMap.get(DcMotor.class,"trans");
 
         //SERVOS
-        spin = hardwareMap.get(CRServo.class, "spin");
+        spin1 = hardwareMap.get(CRServo.class, "spin1");
+        spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
 //        hood = hardwareMap.get(Servo.class,"hood");
 //        trans =  hardwareMap.get(Servo.class,"t1");
 
         //ENCODERS
-        spinAnalog = hardwareMap.get(AnalogInput.class, "espin");
+        spinEncoder1 = hardwareMap.get(AnalogInput.class, "espin1");
+        spinEncoder2 = hardwareMap.get(AnalogInput.class, "espin2");
 
+        //COLOR SENSOR
+        color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
 
         //TOGGLESERVO
 //        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
@@ -222,7 +236,8 @@ public class MainBlueOpMode extends LinearOpMode
         fly1.setDirection(DcMotor.Direction.REVERSE);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
-        spin.setDirection(CRServo.Direction.FORWARD);
+        spin1.setDirection(CRServo.Direction.FORWARD);
+        spin2.setDirection(CRServo.Direction.FORWARD);
 
         //endregion
 
@@ -347,14 +362,16 @@ public class MainBlueOpMode extends LinearOpMode
             flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50);
 
             //INDICATOR LIGHT
-            if(!flyOn){
-                led.setPosition(1);//white
-            }
-            else if(flyAtSpeed){
-                led.setPosition(0.5);//green
-            }
-            else{
-                led.setPosition(0.3);//red (ish)
+            if(runtime.milliseconds() - LedDelayTime > 500) {
+                if(!flyOn){
+                    led.setPosition(1);//white
+                }
+                else if(flyAtSpeed){
+                    led.setPosition(0.45);//green
+                }
+                else{
+                    led.setPosition(0.3);//red (ish)
+                }
             }
             //endregion
 
@@ -385,9 +402,6 @@ public class MainBlueOpMode extends LinearOpMode
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
             if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
             pidLastTimeMs = nowMs;
-
-            // ENCODING FOR SERVOS
-            double volt = spinAnalog.getVoltage();
 
             // === PIDF tuning via Gamepad2 ===
             double adjustStepP = 0.0002;
@@ -431,9 +445,13 @@ public class MainBlueOpMode extends LinearOpMode
             //region CAROUSEL
             if (gamepad1.dpad_right && !right1Pressed) {
                 carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
+                LedDelayTime=runtime.milliseconds();
+                spinBallLED();
             }
             if (gamepad1.dpad_left && !left1Pressed) {
                 carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+                LedDelayTime=runtime.milliseconds();
+                spinBallLED();
             }
 
             // always run PID towards the current selected preset while opMode active
@@ -503,6 +521,23 @@ public class MainBlueOpMode extends LinearOpMode
                 lastHeadingError = 0;
                 pidTimer.reset();
             }
+            //endregion
+
+            //region COLOR SENSOR AND SAVED BALL POSITIONS
+            char detectedColor = getDetectedColor();
+            telemetry.addData("Detected Color",detectedColor);
+
+            if(carouselIndex==0) savedBalls[0] = detectedColor;
+            if(carouselIndex==2) savedBalls[1] = detectedColor;
+            if(carouselIndex==4) savedBalls[2] = detectedColor;
+
+            if(tranOn){
+                if(carouselIndex==1) savedBalls[2] = 0;
+                if(carouselIndex==3) savedBalls[0] = 0;
+                if(carouselIndex==5) savedBalls[1] = 0;
+            }
+
+            telemetry.addData("Saved Balls","0: %1c, 1: %1c, 2: %1c",savedBalls[0],savedBalls[1],savedBalls[2]);
             //endregion
 
             //region ENDGAME
@@ -600,45 +635,93 @@ public class MainBlueOpMode extends LinearOpMode
 
     private void updateCarouselPID(double targetAngle, double dt) {
         // read angles 0..360
-        double angle = mapVoltageToAngle360(spinAnalog.getVoltage(), 0.01, 3.29);
+        double angle1 = mapVoltageToAngle360(spinEncoder1.getVoltage(), 0.01, 3.29);
+        double angle2 = mapVoltageToAngle360(spinEncoder2.getVoltage(), 0.01, 3.29);
 
         // compute shortest signed error [-180,180]
-        double error = -angleError(targetAngle, angle);
+        double error1 = -angleError(targetAngle, angle1);
+        double error2 = -angleError(targetAngle, angle2);
 
         // integral with anti-windup
-        integral += error * dt;
-        integral = clamp(integral, -integralLimit, integralLimit);
+        integral1 += error1 * dt;
+        integral1 = clamp(integral1, -integralLimit, integralLimit);
+        integral2 += error2 * dt;
+        integral2 = clamp(integral2, -integralLimit, integralLimit);
 
         // derivative
-        double d = (error - lastError) / Math.max(dt, 1e-6);
+        double d1 = (error1 - lastError1) / Math.max(dt, 1e-6);
+        double d2 = (error2 - lastError2) / Math.max(dt, 1e-6);
 
         // PIDF output (interpreted as servo power)
-        double out = pidKp * error + pidKi * integral + pidKd * d;
+        double out1 = pidKp * error1 + pidKi * integral1 + pidKd * d1;
+        double out2 = pidKp * error2 + pidKi * integral2 + pidKd * d2;
 
         // small directional feedforward to overcome stiction when error significant
-        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
+        if (Math.abs(error1) > 1.0) out1 += pidKf * Math.signum(error1);
+        if (Math.abs(error2) > 1.0) out2 += pidKf * Math.signum(error2);
 
         // clamp to [-1,1] and apply deadband
-        out = Range.clip(out, -1.0, 1.0);
-        if (Math.abs(out) < outputDeadband) out = 0.0;
+        out1 = Range.clip(out1, -1.0, 1.0);
+        if (Math.abs(out1) < outputDeadband) out1 = 0.0;
+
+        out2 = Range.clip(out2, -1.0, 1.0);
+        if (Math.abs(out2) < outputDeadband) out2 = 0.0;
 
         // if within tolerance, zero outputs and decay integrator to avoid bumping
-        if (Math.abs(error) <= positionToleranceDeg) {
-            out = 0.0;
-            integral *= 0.2;
+        if (Math.abs(error1) <= positionToleranceDeg) {
+            out1 = 0.0;
+            integral1 *= 0.2;
+        }
+        if (Math.abs(error2) <= positionToleranceDeg) {
+            out2 = 0.0;
+            integral2 *= 0.2;
         }
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
-        spin.setPower(out);
+        spin1.setPower(out1);
+        spin2.setPower(out2);
 
         // store errors for next derivative calculation
-        lastError = error;
+        lastError1 = error1;
+        lastError2 = error2;
 
         // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("integral",integral);
         telemetry.addData("Carousel Target", "%.1f°", targetAngle);
-        telemetry.addData("SPIN VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
+        telemetry.addData("SPIN 1 VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle1, error1, out1);
+        telemetry.addData("SPIN 2 VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle2, error2, out2);
 
+    }
+
+    private void spinBallLED(){
+        if(carouselIndex % 2 == 1){
+            int ballIndex=0;
+//                int ballIndex = 0.375*(carouselIndex*carouselIndex)-2.5*carouselIndex+4.125;
+            if(carouselIndex==1) ballIndex=2;
+            else if(carouselIndex==3) ballIndex=0;
+            else if(carouselIndex==5) ballIndex=1;
+
+            if(savedBalls[ballIndex]=='p') led.setPosition(0.722);
+            else if(savedBalls[ballIndex]=='g') led.setPosition(0.51);
+            else led.setPosition(1);
+        }
+    }
+
+    private char getDetectedColor(){
+        NormalizedRGBA colors = color.getNormalizedColors();
+        float nRed, nGreen, nBlue;
+        nRed = colors.red/colors.alpha;
+        nGreen = colors.green/colors.alpha;
+        nBlue = colors.blue/colors.alpha;
+
+//        telemetry.addData("Colors","Red: %3f, Green: %3f, Blue: %3f",nRed,nGreen,nBlue);
+
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
+        }
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
+            return 'g';
+        }
+        return 'n';
     }
 
     private void initAprilTag() {
