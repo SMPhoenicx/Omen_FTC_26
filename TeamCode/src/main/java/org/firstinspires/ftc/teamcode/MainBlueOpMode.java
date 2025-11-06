@@ -115,7 +115,7 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     //region CAROUSEL PIDF STUFF
-    private  double pidKp = 0.0089;    // start small, increase until responsive
+    private  double pidKp = 0.0057;    // start small, increase until responsive
     private  double pidKi = 0.00166;  // tiny integral (if needed)
     private  double pidKd = 0.00002;  // derivative to damp oscillation
     private  double pidKf = 0.0;    // small directional feedforward to overcome stiction
@@ -129,7 +129,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
     // --- Carousel preset positions (6 presets, every 60 degrees) ---
-    private final double[] CAROUSEL_POSITIONS = {82.0, 142.0, 202.0, 262.0, 322.0, 22.0};
+    private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
     private int carouselIndex = 0;
     private char[] savedBalls = {'n','n','n'};//n is none (empty), p is purple, g is green  --  side note i did not realize this says nnn when the carousels empty lmao
     //endregion
@@ -163,7 +163,6 @@ public class MainBlueOpMode extends LinearOpMode
         double lastIAdjustTime = 0;
         double lastDAdjustTime = 0;
         double lastFAdjustTime = 0;
-        double LedDelayTime = 0;
         //endregion
 
         //region CONTROL VARS
@@ -208,7 +207,7 @@ public class MainBlueOpMode extends LinearOpMode
         spin1 = hardwareMap.get(CRServo.class, "spin1");
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
-//        hood = hardwareMap.get(Servo.class,"hood");
+        hood = hardwareMap.get(Servo.class,"hood");
 //        trans =  hardwareMap.get(Servo.class,"t1");
 
         //ENCODERS
@@ -235,9 +234,9 @@ public class MainBlueOpMode extends LinearOpMode
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.REVERSE);
         fly1.setDirection(DcMotor.Direction.FORWARD);
-        intake.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.REVERSE);
+        intake.setDirection(DcMotor.Direction.FORWARD);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
@@ -256,7 +255,7 @@ public class MainBlueOpMode extends LinearOpMode
         telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
 
-//        hood.setPosition(0);
+        hood.setPosition(0);
         //WAIT
         waitForStart();
         runtime.reset();
@@ -367,16 +366,14 @@ public class MainBlueOpMode extends LinearOpMode
             flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50)&&(flySpeed - fly2.getVelocity() < 50)&&(flySpeed - fly2.getVelocity() > -50);
 
             //INDICATOR LIGHT
-            if(runtime.milliseconds() - LedDelayTime > 500) {
-                if(!flyOn){
-                    led.setPosition(1);//white
-                }
-                else if(flyAtSpeed){
-                    led.setPosition(0.611);//blue
-                }
-                else{
-                    led.setPosition(0.3);//red (ish)
-                }
+            if(!flyOn){
+                led.setPosition(1);//white
+            }
+            else if(flyAtSpeed){
+                led.setPosition(0.5);//blue
+            }
+            else{
+                led.setPosition(0.3);//red (ish)
             }
             //endregion
 
@@ -449,14 +446,12 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region CAROUSEL
-            if (gamepad1.dpad_right && !right1Pressed) {
+            if (gamepad1.dpad_left && !left1Pressed) {
                 carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
-                LedDelayTime=runtime.milliseconds();
                 spinBallLED();
             }
-            if (gamepad1.dpad_left && !left1Pressed) {
+            if (gamepad1.dpad_right && !right1Pressed) {
                 carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                LedDelayTime=runtime.milliseconds();
                 spinBallLED();
             }
 
@@ -689,9 +684,9 @@ public class MainBlueOpMode extends LinearOpMode
             else if(carouselIndex==3) ballIndex=0;
             else if(carouselIndex==5) ballIndex=1;
 
-            if(savedBalls[ballIndex]=='p') led.setPosition(0.722); //purple
-            else if(savedBalls[ballIndex]=='g') led.setPosition(0.5); //green
-            else led.setPosition(1); //white
+            if(savedBalls[ballIndex]=='p') gamepad1.setLedColor(128,0,128,2000); //purple
+            else if(savedBalls[ballIndex]=='g') gamepad1.setLedColor(0,128,0,2000); //green
+            else gamepad1.setLedColor(255,255,255,2000); //white
         }
     }
 
