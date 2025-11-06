@@ -141,6 +141,7 @@ public class MainBlueOpMode extends LinearOpMode
         //CAMERA VARS
         boolean targetFound     = false;
         boolean tranOn = false;
+        boolean intakeOn = false;
 
         //DRIVE VARS
         double  drive           = 0;
@@ -170,10 +171,10 @@ public class MainBlueOpMode extends LinearOpMode
         //GAMEPAD 1
         boolean lb1Pressed = false;
         boolean rb1Pressed = false;
-        boolean b1Pressed = false;
-        boolean a1Pressed = false;
-        boolean x1Pressed = false;
-        boolean y1Pressed = false;
+        boolean circle1Pressed = false;
+        boolean cross1Pressed = false;
+        boolean square1Pressed = false;
+        boolean triangle1Pressed = false;
         boolean down1Pressed = false;
         boolean up1Pressed = false;
         boolean right1Pressed = false;
@@ -181,10 +182,10 @@ public class MainBlueOpMode extends LinearOpMode
         //GAMEPAD 2
         boolean lb2Pressed = false;
         boolean rb2Pressed = false;
-        boolean b2Pressed = false;
-        boolean a2Pressed = false;
-        boolean x2Pressed = false;
-        boolean y2Pressed = false;
+        boolean circle2Pressed = false;
+        boolean cross2Pressed = false;
+        boolean square2Pressed = false;
+        boolean triangle2Pressed = false;
         boolean down2Pressed = false;
         boolean up2Pressed = false;
         boolean right2Pressed = false;
@@ -342,7 +343,7 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region FLYWHEEL AND LIGHTS
             //FLYWHEEL CONTROLS
-            if(gamepad1.a && !a1Pressed)  {
+            if(gamepad1.cross && !cross1Pressed)  {
                 flyOn = !flyOn;
             }
 
@@ -377,6 +378,7 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region INTAKE
             if(gamepad1.right_bumper && !rb1Pressed) {
+                intakeOn = !intakeOn;
                 if(intake.getPower() <= 0) intake.setPower(1);
                 else intake.setPower(0);
             }
@@ -387,7 +389,7 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region TRANSFER
-            if(gamepad1.y && !y1Pressed) {
+            if(gamepad1.triangle && !triangle1Pressed) {
                 tranOn = !tranOn;
                 if(tranOn){
                     trans.setPower(1);
@@ -411,12 +413,12 @@ public class MainBlueOpMode extends LinearOpMode
             double debounceTime = 50; // milliseconds
 
             if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
-                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.cross) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.circle) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
             }
             if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
-                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.square) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.triangle) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
             }
             if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
                 if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
@@ -460,7 +462,7 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region FACE GOAL
-            if (gamepad1.x && !x1Pressed){
+            if (gamepad1.square && !square1Pressed){
                 facingGoal = !facingGoal;
             }
 
@@ -541,14 +543,14 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region ENDGAME
-            if(gamepad1.b&&!b1Pressed&&!follower.isBusy()&&localizeApril){
+            if(gamepad1.circle&&!circle1Pressed&&!follower.isBusy()&&localizeApril){
                 endgame = follower.pathBuilder()
                         .addPath(new BezierLine(follower.getPose(),endgamePose))
                         .setLinearHeadingInterpolation(follower.getHeading(),endgamePose.getHeading())
                         .build();
                 follower.followPath(endgame,true);
             }
-            if(gamepad1.b&&!b1Pressed&&!follower.isBusy()&&!localizeApril){
+            if(gamepad1.circle&&!circle1Pressed&&!follower.isBusy()&&!localizeApril){
                 follower.breakFollowing();
                 localizeApril=true;
             }
@@ -567,10 +569,11 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             //region CONTROL RESETS
-            b1Pressed = gamepad1.b;
-            a1Pressed = gamepad1.a;
-            x1Pressed = gamepad1.x;
-            y1Pressed = gamepad1.y;
+            
+            circle1Pressed = gamepad1.circle;
+            cross1Pressed = gamepad1.cross;
+            square1Pressed = gamepad1.square;
+            triangle1Pressed = gamepad1.triangle;
             down1Pressed = gamepad1.dpad_down;
             up1Pressed = gamepad1.dpad_up;
             left1Pressed = gamepad1.dpad_left;
@@ -578,10 +581,10 @@ public class MainBlueOpMode extends LinearOpMode
             lb1Pressed = gamepad1.left_bumper;
             rb1Pressed = gamepad1.right_bumper;
 
-            b2Pressed = gamepad2.b;
-            a2Pressed = gamepad2.a;
-            x2Pressed = gamepad2.x;
-            y2Pressed = gamepad2.y;
+            circle2Pressed = gamepad2.circle;
+            cross2Pressed = gamepad2.cross;
+            square2Pressed = gamepad2.square;
+            triangle2Pressed = gamepad2.triangle;
             down2Pressed = gamepad2.dpad_down;
             up2Pressed = gamepad2.dpad_up;
             left2Pressed = gamepad2.dpad_left;
@@ -600,9 +603,6 @@ public class MainBlueOpMode extends LinearOpMode
             telemetry.addData("Camera Localized Pos","x: %.2f y: %.2f heading: %.2f",follower.getPose().getX(),follower.getPose().getY(),Math.toDegrees(follower.getHeading()));
             telemetry.update();
             //endregion
-
-            //hmmmm
-            sleep(10);
         }
     }
 
