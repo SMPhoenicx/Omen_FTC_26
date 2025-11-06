@@ -72,6 +72,7 @@ public class MainBlueOpMode extends LinearOpMode
     private DcMotor backLeftDrive = null;
     private DcMotor backRightDrive = null;
     private DcMotorEx fly1 = null;
+    private DcMotorEx fly2 = null;
     private DcMotor intake = null;
     private DcMotor trans = null;
     private Servo led = null;
@@ -114,15 +115,13 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     //region CAROUSEL PIDF STUFF
-    private  double pidKp = 0.0115;    // start small, increase until responsive
+    private  double pidKp = 0.0089;    // start small, increase until responsive
     private  double pidKi = 0.00166;  // tiny integral (if needed)
-    private  double pidKd = 0.00005;  // derivative to damp oscillation
+    private  double pidKd = 0.00002;  // derivative to damp oscillation
     private  double pidKf = 0.0;    // small directional feedforward to overcome stiction
 
-    private double integral1 = 0.0;
-    private double integral2 = 0.0;
-    private double lastError1 = 0.0;
-    private double lastError2 = 0.0;
+    private double integral = 0.0;
+    private double lastError = 0.0;
     private double integralLimit = 500.0; // clamp integral
 
     private double pidLastTimeMs = 0.0; // ms timestamp for PID dt
@@ -130,7 +129,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
     // --- Carousel preset positions (6 presets, every 60 degrees) ---
-    private final double[] CAROUSEL_POSITIONS = {42.0, 102.0, 162.0, 222.0, 282.0, 342.0};
+    private final double[] CAROUSEL_POSITIONS = {82.0, 142.0, 202.0, 262.0, 322.0, 22.0};
     private int carouselIndex = 0;
     private char[] savedBalls = {'n','n','n'};//n is none (empty), p is purple, g is green  --  side note i did not realize this says nnn when the carousels empty lmao
     //endregion
@@ -201,6 +200,7 @@ public class MainBlueOpMode extends LinearOpMode
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
         fly1 = hardwareMap.get(DcMotorEx.class, "fly1");
+        fly2 = hardwareMap.get(DcMotorEx.class,"fly2");
         intake = hardwareMap.get(DcMotor.class, "in");
         trans = hardwareMap.get(DcMotor.class,"trans");
 
@@ -219,7 +219,7 @@ public class MainBlueOpMode extends LinearOpMode
         color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
 
         //TOGGLESERVO
-//        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
+        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
 //40, 1150, 270
         //50, 1200, 270
         //60, 1250, 270
@@ -228,6 +228,7 @@ public class MainBlueOpMode extends LinearOpMode
 
         //MODES
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         //DIRECTIONS
         frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
@@ -235,6 +236,7 @@ public class MainBlueOpMode extends LinearOpMode
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
         fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -307,10 +309,10 @@ public class MainBlueOpMode extends LinearOpMode
                 double range = desiredTag.ftcPose.range;
 
                 if(range >= 67 ) {
-//                    hoodt.setIndex(3);
+                    hoodt.setIndex(3);
                 }
                 else {
-//                    hoodt.setIndex(2);
+                    hoodt.setIndex(2);
                 }
 
                 flySpeed = 5.47 * range + 933.0;
@@ -332,11 +334,11 @@ public class MainBlueOpMode extends LinearOpMode
                 }
 
                 if(gamepad1.dpad_down && !down1Pressed) {
-//                    hoodt.toggleLeft();
+                    hoodt.toggleLeft();
                 }
 
                 if(gamepad1.dpad_up && !up1Pressed) {
-//                    hoodt.toggleRight();
+                    hoodt.toggleRight();
                 }
             }
             //endregion
@@ -354,13 +356,15 @@ public class MainBlueOpMode extends LinearOpMode
 
             if(flyOn) {
                 fly1.setVelocity(flySpeed);
+                fly2.setVelocity(flySpeed);
             }
             else {
                 fly1.setVelocity(0);
+                fly2.setVelocity(0);
             }
 
             //FLYWHEEL LED
-            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50);
+            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50)&&(flySpeed - fly2.getVelocity() < 50)&&(flySpeed - fly2.getVelocity() > -50);
 
             //INDICATOR LIGHT
             if(runtime.milliseconds() - LedDelayTime > 500) {
@@ -368,7 +372,7 @@ public class MainBlueOpMode extends LinearOpMode
                     led.setPosition(1);//white
                 }
                 else if(flyAtSpeed){
-                    led.setPosition(0.45);//green
+                    led.setPosition(0.611);//blue
                 }
                 else{
                     led.setPosition(0.3);//red (ish)
@@ -597,7 +601,7 @@ public class MainBlueOpMode extends LinearOpMode
             telemetry.addData("Status", "Run Time: " + runtime.toString());
             telemetry.addData("Fly state", flyOn);
             telemetry.addData("Fly power", flySpeed);
-            telemetry.addData("Encoder fly speed","Wheel 1: %.1f", fly1.getVelocity());
+            telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
             telemetry.addData("Flying at correct power", flyAtSpeed);
 //            telemetry.addData("Hood angle:", "%.3f", hoodt.getServo().getPosition());
             telemetry.addData("Camera Localized Pos","x: %.2f y: %.2f heading: %.2f",follower.getPose().getX(),follower.getPose().getY(),Math.toDegrees(follower.getHeading()));
@@ -635,60 +639,45 @@ public class MainBlueOpMode extends LinearOpMode
 
     private void updateCarouselPID(double targetAngle, double dt) {
         // read angles 0..360
-        double angle1 = mapVoltageToAngle360(spinEncoder1.getVoltage(), 0.01, 3.29);
-        double angle2 = mapVoltageToAngle360(spinEncoder2.getVoltage(), 0.01, 3.29);
+        double angle = mapVoltageToAngle360(spinEncoder1.getVoltage(), 0.01, 3.29);
 
         // compute shortest signed error [-180,180]
-        double error1 = -angleError(targetAngle, angle1);
-        double error2 = -angleError(targetAngle, angle2);
+        double error = -angleError(targetAngle, angle);
 
         // integral with anti-windup
-        integral1 += error1 * dt;
-        integral1 = clamp(integral1, -integralLimit, integralLimit);
-        integral2 += error2 * dt;
-        integral2 = clamp(integral2, -integralLimit, integralLimit);
+        integral += error * dt;
+        integral = clamp(integral, -integralLimit, integralLimit);
 
         // derivative
-        double d1 = (error1 - lastError1) / Math.max(dt, 1e-6);
-        double d2 = (error2 - lastError2) / Math.max(dt, 1e-6);
+        double d = (error - lastError) / Math.max(dt, 1e-6);
 
         // PIDF output (interpreted as servo power)
-        double out1 = pidKp * error1 + pidKi * integral1 + pidKd * d1;
-        double out2 = pidKp * error2 + pidKi * integral2 + pidKd * d2;
+        double out = pidKp * error + pidKi * integral + pidKd * d;
 
         // small directional feedforward to overcome stiction when error significant
-        if (Math.abs(error1) > 1.0) out1 += pidKf * Math.signum(error1);
-        if (Math.abs(error2) > 1.0) out2 += pidKf * Math.signum(error2);
+        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
 
         // clamp to [-1,1] and apply deadband
-        out1 = Range.clip(out1, -1.0, 1.0);
-        if (Math.abs(out1) < outputDeadband) out1 = 0.0;
-
-        out2 = Range.clip(out2, -1.0, 1.0);
-        if (Math.abs(out2) < outputDeadband) out2 = 0.0;
+        out = Range.clip(out, -1.0, 1.0);
+        if (Math.abs(out) < outputDeadband) out = 0.0;
 
         // if within tolerance, zero outputs and decay integrator to avoid bumping
-        if (Math.abs(error1) <= positionToleranceDeg) {
-            out1 = 0.0;
-            integral1 *= 0.2;
-        }
-        if (Math.abs(error2) <= positionToleranceDeg) {
-            out2 = 0.0;
-            integral2 *= 0.2;
+        if (Math.abs(error) <= positionToleranceDeg) {
+            out = 0.0;
+            integral *= 0.2;
         }
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
-        spin1.setPower(out1);
-        spin2.setPower(out2);
+        spin1.setPower(out);
+        spin2.setPower(out);
 
         // store errors for next derivative calculation
-        lastError1 = error1;
-        lastError2 = error2;
+        lastError = error;
 
         // telemetry for PID (keeps concise, add more if you want)
+        telemetry.addData("integral",integral);
         telemetry.addData("Carousel Target", "%.1f°", targetAngle);
-        telemetry.addData("SPIN 1 VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle1, error1, out1);
-        telemetry.addData("SPIN 2 VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle2, error2, out2);
+        telemetry.addData("SPIN VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
 
     }
 
@@ -700,18 +689,17 @@ public class MainBlueOpMode extends LinearOpMode
             else if(carouselIndex==3) ballIndex=0;
             else if(carouselIndex==5) ballIndex=1;
 
-            if(savedBalls[ballIndex]=='p') led.setPosition(0.722);
-            else if(savedBalls[ballIndex]=='g') led.setPosition(0.51);
-            else led.setPosition(1);
+            if(savedBalls[ballIndex]=='p') led.setPosition(0.722); //purple
+            else if(savedBalls[ballIndex]=='g') led.setPosition(0.5); //green
+            else led.setPosition(1); //white
         }
     }
 
     private char getDetectedColor(){
         NormalizedRGBA colors = color.getNormalizedColors();
-        float nRed, nGreen, nBlue;
-        nRed = colors.red/colors.alpha;
-        nGreen = colors.green/colors.alpha;
-        nBlue = colors.blue/colors.alpha;
+        float nRed = colors.red/colors.alpha;
+        float nGreen = colors.green/colors.alpha;
+        float nBlue = colors.blue/colors.alpha;
 
 //        telemetry.addData("Colors","Red: %3f, Green: %3f, Blue: %3f",nRed,nGreen,nBlue);
 

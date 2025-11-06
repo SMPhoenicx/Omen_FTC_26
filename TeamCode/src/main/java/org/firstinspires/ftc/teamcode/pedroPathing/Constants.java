@@ -50,7 +50,7 @@ public class Constants {
             .leftPodY(5.125)
             .rightPodY(-5.125)
             .strafePodX(-7)
-            .leftEncoder_HardwareMapName("skib")
+            .leftEncoder_HardwareMapName("fly2")
             .rightEncoder_HardwareMapName("fl")
             .strafeEncoder_HardwareMapName("in")
             .leftEncoderDirection(Encoder.REVERSE)
