@@ -35,6 +35,9 @@ import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.AnalogInput;
@@ -52,6 +55,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.Exposur
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
@@ -84,20 +88,21 @@ public class MainBlueOpMode extends LinearOpMode
     private AnalogInput spinEncoder2;
     //COLOR
     private NormalizedColorSensor color = null;
+
+    //LIMELIGHT
+    private Limelight3A limelight;
     //endregion
 
     //region CAMERA VARS
+    private LLResultTypes.FiducialResult desiredTag;
     private static final int DESIRED_TAG_ID = 20;
-    private VisionPortal visionPortal;
-    private AprilTagProcessor aprilTag;
-    private AprilTagDetection desiredTag;
     private boolean facingGoal = false;
 
     //CAM PREDICTIONS
     private double lastKnownBearing = 0;
     private double lastKnownRange = 0;
     private long lastDetectionTime = 0;
-    private static final long PREDICTION_TIMEOUT = 500;
+    private static final long PREDICTION_TIMEOUT = 150;
 
     private double lastHeadingError = 0;
     private ElapsedTime pidTimer = new ElapsedTime();
@@ -165,32 +170,6 @@ public class MainBlueOpMode extends LinearOpMode
         double lastFAdjustTime = 0;
         //endregion
 
-        //region CONTROL VARS
-        //GAMEPAD 1
-        boolean lb1Pressed = false;
-        boolean rb1Pressed = false;
-        boolean circle1Pressed = false;
-        boolean cross1Pressed = false;
-        boolean square1Pressed = false;
-        boolean triangle1Pressed = false;
-        boolean down1Pressed = false;
-        boolean up1Pressed = false;
-        boolean right1Pressed = false;
-        boolean left1Pressed = false;
-        //GAMEPAD 2
-        boolean lb2Pressed = false;
-        boolean rb2Pressed = false;
-        boolean circle2Pressed = false;
-        boolean cross2Pressed = false;
-        boolean square2Pressed = false;
-        boolean triangle2Pressed = false;
-        boolean down2Pressed = false;
-        boolean up2Pressed = false;
-        boolean right2Pressed = false;
-        boolean left2Pressed = false;
-        //endregion
-
-        initAprilTag();
 
         //region HARDWARE INFO
         // HARDWARE MAPS
@@ -234,8 +213,8 @@ public class MainBlueOpMode extends LinearOpMode
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.FORWARD);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -247,8 +226,11 @@ public class MainBlueOpMode extends LinearOpMode
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(new Pose(23,120,Math.toRadians(90)));//lowkey this pos doesnt matter
 
-        //INIT ACTIONS
-        setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
+        //LIMELIGHT
+        limelight = hardwareMap.get(Limelight3A.class, "limelight");
+        limelight.setPollRateHz(100);
+        limelight.start();
+        limelight.pipelineSwitch(0);
 
         //INIT TELEMETRY
         telemetry.addData("Camera preview on/off", "3 dots, Camera Stream");
@@ -265,48 +247,46 @@ public class MainBlueOpMode extends LinearOpMode
             follower.update();
             pidLastTimeMs = runtime.milliseconds();
 
-            //region CAMERA
-            targetFound = false;
-            desiredTag  = null;
+            LLResult result = limelight.getLatestResult();
+            if (result != null && result.isValid()) {
+                targetFound = false;
+                desiredTag = null;
 
-            //like so localization averages if both goals are in view
-            Pose cameraLocalize = null;
-
-            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-            for (AprilTagDetection detection : currentDetections) {
-                // Look to see if we have size info on this tag.
-                if (detection.metadata != null) {
-                    //  Check to see if we want to track towards this tag.
-                    if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
-                        // Yes, we want to use this tag.
-                        desiredTag = detection;
+                List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+                for (LLResultTypes.FiducialResult fiducial : fiducials) {
+                    if (fiducial.getFiducialId() == DESIRED_TAG_ID) {
+                        desiredTag = fiducial;
                         targetFound = true;
-                    } else {
-                        // This tag is in the library, but we do not want to track it right now.
-                        telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
+                        break;
                     }
-                    //LOCALIZATION STUFF
-                    if (!detection.metadata.name.contains("Obelisk")&&localizeApril&&runtime.milliseconds()-aprilLocalizationTimeout>50) {
-                        if(cameraLocalize==null) {
-                            cameraLocalize = new Pose(detection.robotPose.getPosition().y + 72, -detection.robotPose.getPosition().x + 72, detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS));
-                        }else{
-                            cameraLocalize = new Pose((cameraLocalize.getX()+detection.robotPose.getPosition().y + 72)/2,(cameraLocalize.getY()+ -detection.robotPose.getPosition().x + 72)/2,(cameraLocalize.getHeading()+detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS))/2);
-                        }
-                        follower.setPose(cameraLocalize);
-                        aprilLocalizationTimeout=runtime.milliseconds();
-                    }
-                }else {
-                    // This tag is NOT in the library, so we don't have enough information to track to it.
-                    telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
                 }
+
+            } else {
+                telemetry.addData("Limelight", "No Targets");
             }
+
 
             // DO WHEN CAMERA TRACKING
             //MAYBE MAKE THIS WHEN facingGoal BOOL IS TRUE?
-            if (targetFound) {
-                adjustDecimation(desiredTag.ftcPose.range);
-                double range = desiredTag.ftcPose.range;
+            if (targetFound && desiredTag != null)
+            {
+                //get all distances and angles
+                double tx = desiredTag.getTargetXDegrees();      // horizontal offset in degrees
+                double ty = desiredTag.getTargetYDegrees();      // vertical offset in degrees
+                double ta = desiredTag.getTargetArea();          //area (0-100%)
 
+                Pose3D targetPose = desiredTag.getRobotPoseTargetSpace();
+
+                double x = targetPose.getPosition().x;
+                double y = targetPose.getPosition().y;
+                double z = targetPose.getPosition().z;
+
+                //idk what's better to use
+                double distMeters = Math.sqrt(x*x + y*y + z*z);
+                double slantRange = distMeters * 39.3701;
+                double range = x * 39.3701; //in inches
+
+                //def have to change these
                 if(range >= 67 ) {
                     hoodt.setIndex(3);
                 }
@@ -316,11 +296,11 @@ public class MainBlueOpMode extends LinearOpMode
 
                 flySpeed = 5.47 * range + 933.0;
 
-                telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
-                telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
-                telemetry.addData("Range",  "%5.1f inches", desiredTag.ftcPose.range);
-                telemetry.addData("Bearing","%3.0f degrees", desiredTag.ftcPose.bearing);
-                telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
+                telemetry.addData("Target ID", desiredTag.getFiducialId());
+                telemetry.addData("Distance", "%.1f inches", range);
+                telemetry.addData("TX (bearing)", "%.1f degrees", tx);
+                telemetry.addData("TY", "%.1f degrees", ty);
+                telemetry.addData("Flywheel Speed", "%.0f", flySpeed);
             }
             else {
                 if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
@@ -332,11 +312,11 @@ public class MainBlueOpMode extends LinearOpMode
                     lastTime = runtime.milliseconds();
                 }
 
-                if(gamepad1.dpad_down && !down1Pressed) {
+                if(gamepad1.dpadDownWasPressed()) {
                     hoodt.toggleLeft();
                 }
 
-                if(gamepad1.dpad_up && !up1Pressed) {
+                if(gamepad1.dpadUpWasPressed()) {
                     hoodt.toggleRight();
                 }
             }
@@ -344,7 +324,7 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region FLYWHEEL AND LIGHTS
             //FLYWHEEL CONTROLS
-            if(gamepad1.cross && !cross1Pressed)  {
+            if(gamepad1.crossWasPressed())  {
                 flyOn = !flyOn;
             }
 
@@ -378,19 +358,19 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region INTAKE
-            if(gamepad1.right_bumper && !rb1Pressed) {
+            if(gamepad1.rightBumperWasPressed()) {
                 intakeOn = !intakeOn;
                 if(intake.getPower() <= 0) intake.setPower(1);
                 else intake.setPower(0);
             }
             //OUTTAKE
-            if(gamepad1.left_bumper && !lb1Pressed) {
+            if(gamepad1.leftBumperWasPressed()) {
                 intake.setPower(-0.6);
             }
             //endregion
 
             //region TRANSFER
-            if(gamepad1.triangle && !triangle1Pressed) {
+            if(gamepad1.triangleWasPressed()) {
                 tranOn = !tranOn;
                 if(tranOn){
                     trans.setPower(1);
@@ -446,11 +426,11 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region CAROUSEL
-            if (gamepad1.dpad_left && !left1Pressed) {
+            if (gamepad1.dpadLeftWasPressed()) {
                 carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
-            if (gamepad1.dpad_right && !right1Pressed) {
+            if (gamepad1.dpadRightWasPressed()) {
                 carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
@@ -461,17 +441,20 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region FACE GOAL
-            if (gamepad1.square && !square1Pressed){
+            if (gamepad1.squareWasPressed()){
                 facingGoal = !facingGoal;
             }
 
             if (facingGoal) {
-                if (targetFound) {
-                    lastKnownBearing = desiredTag.ftcPose.bearing;
-                    lastKnownRange = desiredTag.ftcPose.range;
+
+                //NOTE: MIGHT NOT NEED SMOOTHING OR AS MUCH SMOOTHING FOR LIMELIGHT
+                // REDUCED TIMEOUT TO 150 ms
+                if (targetFound && desiredTag != null) {
+                    double tx = desiredTag.getTargetXDegrees();
+                    lastKnownBearing = tx;
                     lastDetectionTime = System.currentTimeMillis();
 
-                    double headingError = desiredTag.ftcPose.bearing;
+                    double headingError = tx;
 
                     double deltaTime = pidTimer.seconds();
                     double derivative = (headingError - lastHeadingError) / deltaTime;
@@ -542,14 +525,14 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region ENDGAME
-            if(gamepad1.circle&&!circle1Pressed&&!follower.isBusy()&&localizeApril){
+            if(gamepad1.circleWasPressed() && !follower.isBusy() && localizeApril){
                 endgame = follower.pathBuilder()
                         .addPath(new BezierLine(follower.getPose(),endgamePose))
                         .setLinearHeadingInterpolation(follower.getHeading(),endgamePose.getHeading())
                         .build();
                 follower.followPath(endgame,true);
             }
-            if(gamepad1.circle&&!circle1Pressed&&!follower.isBusy()&&!localizeApril){
+            if(gamepad1.circleWasPressed()&&!follower.isBusy()&&!localizeApril){
                 follower.breakFollowing();
                 localizeApril=true;
             }
@@ -567,30 +550,6 @@ public class MainBlueOpMode extends LinearOpMode
                 moveRobot(drive, strafe, turn);
             }
 
-            //region CONTROL RESETS
-            
-            circle1Pressed = gamepad1.circle;
-            cross1Pressed = gamepad1.cross;
-            square1Pressed = gamepad1.square;
-            triangle1Pressed = gamepad1.triangle;
-            down1Pressed = gamepad1.dpad_down;
-            up1Pressed = gamepad1.dpad_up;
-            left1Pressed = gamepad1.dpad_left;
-            right1Pressed = gamepad1.dpad_right;
-            lb1Pressed = gamepad1.left_bumper;
-            rb1Pressed = gamepad1.right_bumper;
-
-            circle2Pressed = gamepad2.circle;
-            cross2Pressed = gamepad2.cross;
-            square2Pressed = gamepad2.square;
-            triangle2Pressed = gamepad2.triangle;
-            down2Pressed = gamepad2.dpad_down;
-            up2Pressed = gamepad2.dpad_up;
-            left2Pressed = gamepad2.dpad_left;
-            right2Pressed = gamepad2.dpad_right;
-            lb2Pressed = gamepad2.left_bumper;
-            rb2Pressed = gamepad2.right_bumper;
-            //endregion
 
             //region TELEMETRY
             telemetry.addData("Status", "Run Time: " + runtime.toString());
@@ -605,7 +564,7 @@ public class MainBlueOpMode extends LinearOpMode
         }
     }
 
-    //HELPER METHODS
+    //region HELPER METHODS
     public void moveRobot(double x, double y, double yaw) {
         // Calculate wheel powers.
         double frontLeftPower    =  x - y - yaw;
@@ -633,11 +592,22 @@ public class MainBlueOpMode extends LinearOpMode
     }
 
     private void updateCarouselPID(double targetAngle, double dt) {
+        double ccwOffset = 3.0;
         // read angles 0..360
         double angle = mapVoltageToAngle360(spinEncoder1.getVoltage(), 0.01, 3.29);
 
+        //raw error
+        double rawError = -angleError(targetAngle, angle);
+
+        //adds a constant term if it's in a certain direction.
+        // we either do this or we change the pid values for each direction.
+        // gonna try and see if simpler method works tho
+        double compensatedTarget = targetAngle;
+        if (rawError < 0) { // moving CCW
+            compensatedTarget = (targetAngle + ccwOffset) % 360.0;
+        }
         // compute shortest signed error [-180,180]
-        double error = -angleError(targetAngle, angle);
+        double error = -angleError(compensatedTarget, angle);
 
         // integral with anti-windup
         integral += error * dt;
@@ -707,92 +677,6 @@ public class MainBlueOpMode extends LinearOpMode
         return 'n';
     }
 
-    private void initAprilTag() {
-
-        // Create the AprilTag processor.
-        aprilTag = new AprilTagProcessor.Builder()
-
-                // The following default settings are available to un-comment and edit as needed.
-                //.setDrawAxes(false)
-                //.setDrawCubeProjection(false)
-                .setDrawTagOutline(true)
-                //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
-                .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary())
-                .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
-                .setLensIntrinsics(904.848699568, 904.848699568, 658.131998572, 340.91602987)
-                // == CAMERA CALIBRATION ==
-                // If you do not manually specify calibration parameters, the SDK will attempt
-                // to load a predefined calibration for your camera.
-
-                .build();
-
-        // Adjust Image Decimation to trade-off detection-range for detection-rate.
-        // eg: Some typical detection data using a Logitech C920 WebCam
-        // Decimation = 1 ..  Detect 2" Tag from 10 feet away at 10 Frames per second
-        // Decimation = 2 ..  Detect 2" Tag from 6  feet away at 22 Frames per second
-        // Decimation = 3 ..  Detect 2" Tag from 4  feet away at 30 Frames Per Second (default)
-        // Decimation = 3 ..  Detect 5" Tag from 10 feet away at 30 Frames Per Second (default)
-        // Note: Decimation can be changed on-the-fly to adapt during a match.
-        aprilTag.setDecimation(4);
-
-        // Create the vision portal by using a builder.
-        visionPortal = new VisionPortal.Builder()
-                .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
-                .addProcessor(aprilTag)
-                .setCameraResolution(new Size(1280, 720))
-                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
-                .build();
-    }
-
-    private void setManualExposure(int exposureMS, int gain) {
-        // Wait for the camera to be open, then use the controls
-
-        if (visionPortal == null) {
-            return;
-        }
-
-        // Make sure camera is streaming before we try to set the exposure controls
-        if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
-            telemetry.addData("Camera", "Waiting");
-            telemetry.update();
-            while (!isStopRequested() && (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING)) {
-                sleep(20);
-            }
-            telemetry.addData("Camera", "Ready");
-            telemetry.update();
-        }
-
-        // Set camera controls unless we are stopping.
-        if (!isStopRequested())
-        {
-            ExposureControl exposureControl = visionPortal.getCameraControl(ExposureControl.class);
-            if (exposureControl.getMode() != ExposureControl.Mode.Manual) {
-                exposureControl.setMode(ExposureControl.Mode.Manual);
-                sleep(50);
-            }
-            exposureControl.setExposure((long)exposureMS, TimeUnit.MILLISECONDS);
-            sleep(20);
-            GainControl gainControl = visionPortal.getCameraControl(GainControl.class);
-            gainControl.setGain(gain);
-            sleep(20);
-        }
-    }
-
-    private void adjustDecimation(double range) {
-        int newDecimation;
-
-        if (range > 90) {
-            newDecimation = 3;
-        } else if (range > 50) {
-            newDecimation = 3;
-        } else {
-            newDecimation = 4;
-        }
-
-        aprilTag.setDecimation(newDecimation);
-        telemetry.addData("Decimation: ", "%d", newDecimation);
-
-    }
     private double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -809,4 +693,5 @@ public class MainBlueOpMode extends LinearOpMode
         if (error < -180) error += 360;
         return error;
     }
+    //endregion
 }
