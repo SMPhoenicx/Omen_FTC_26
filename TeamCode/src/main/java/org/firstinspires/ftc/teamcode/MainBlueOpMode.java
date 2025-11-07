@@ -135,6 +135,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double outputDeadband = 0.03;
     // --- Carousel preset positions (6 presets, every 60 degrees) ---
     private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
+    //57, 177, and 297 are facing the intake, the others face the transfer
     private int carouselIndex = 0;
     private char[] savedBalls = {'n','n','n'};//n is none (empty), p is purple, g is green  --  side note i did not realize this says nnn when the carousels empty lmao
     //endregion
@@ -275,7 +276,7 @@ public class MainBlueOpMode extends LinearOpMode
                 double ty = desiredTag.getTargetYDegrees();      // vertical offset in degrees
                 double ta = desiredTag.getTargetArea();          //area (0-100%)
 
-                Pose3D targetPose = desiredTag.getRobotPoseTargetSpace();
+                Pose3D targetPose = desiredTag.getTargetPoseRobotSpace();
 
                 double x = targetPose.getPosition().x;
                 double y = targetPose.getPosition().y;
@@ -287,22 +288,23 @@ public class MainBlueOpMode extends LinearOpMode
                 double range = x * 39.3701; //in inches
 
                 //def have to change these
-                if(range >= 67 ) {
+                if(slantRange >= 67 ) {
                     hoodt.setIndex(3);
                 }
                 else {
                     hoodt.setIndex(2);
                 }
 
-                flySpeed = 5.47 * range + 933.0;
+                flySpeed = 5.47 * slantRange + 933.0;
 
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
-                telemetry.addData("Distance", "%.1f inches", range);
+                telemetry.addData("Distance", "%.1f inches", slantRange);
                 telemetry.addData("TX (bearing)", "%.1f degrees", tx);
                 telemetry.addData("TY", "%.1f degrees", ty);
                 telemetry.addData("Flywheel Speed", "%.0f", flySpeed);
             }
             else {
+                telemetry.addData("NOTHING FOUND", "NOTHING FOUND");
                 if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
                     flySpeed += 50;
                     lastTime = runtime.milliseconds();
@@ -312,11 +314,11 @@ public class MainBlueOpMode extends LinearOpMode
                     lastTime = runtime.milliseconds();
                 }
 
-                if(gamepad1.dpadDownWasPressed()) {
+                if(gamepad2.dpadDownWasPressed()) {
                     hoodt.toggleLeft();
                 }
 
-                if(gamepad1.dpadUpWasPressed()) {
+                if(gamepad2.dpadUpWasPressed()) {
                     hoodt.toggleRight();
                 }
             }
@@ -434,6 +436,16 @@ public class MainBlueOpMode extends LinearOpMode
                 carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
+            if (gamepad1.dpadUpWasPressed()) {
+                carouselIndex += carouselIndex % 2 == 0? 1:0;
+                carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+                spinBallLED();
+            }
+            if (gamepad1.dpadDownWasPressed()) {
+                carouselIndex += carouselIndex % 2 == 0? 1:0;
+                carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
+                spinBallLED();
+            }
 
             // always run PID towards the current selected preset while opMode active
             double targetAngle = CAROUSEL_POSITIONS[carouselIndex];
@@ -454,7 +466,7 @@ public class MainBlueOpMode extends LinearOpMode
                     lastKnownBearing = tx;
                     lastDetectionTime = System.currentTimeMillis();
 
-                    double headingError = tx;
+                    double headingError = -tx;
 
                     double deltaTime = pidTimer.seconds();
                     double derivative = (headingError - lastHeadingError) / deltaTime;
@@ -592,7 +604,7 @@ public class MainBlueOpMode extends LinearOpMode
     }
 
     private void updateCarouselPID(double targetAngle, double dt) {
-        double ccwOffset = 3.0;
+        double ccwOffset = -6.0;
         // read angles 0..360
         double angle = mapVoltageToAngle360(spinEncoder1.getVoltage(), 0.01, 3.29);
 
@@ -654,9 +666,18 @@ public class MainBlueOpMode extends LinearOpMode
             else if(carouselIndex==3) ballIndex=0;
             else if(carouselIndex==5) ballIndex=1;
 
-            if(savedBalls[ballIndex]=='p') gamepad1.setLedColor(128,0,128,2000); //purple
-            else if(savedBalls[ballIndex]=='g') gamepad1.setLedColor(0,128,0,2000); //green
-            else gamepad1.setLedColor(255,255,255,2000); //white
+            if(savedBalls[ballIndex]=='p') {
+                gamepad1.setLedColor(128,0,128,2000); //purple
+                gamepad2.setLedColor(128,0,128,2000); //purple
+            }
+            else if(savedBalls[ballIndex]=='g') {
+                gamepad1.setLedColor(0,128,0,2000); //green
+                gamepad2.setLedColor(0,128,0,2000); //green
+            }
+            else {
+                gamepad1.setLedColor(255,255,255,2000); //white
+                gamepad2.setLedColor(255,255,255,2000); //white
+            }
         }
     }
 
