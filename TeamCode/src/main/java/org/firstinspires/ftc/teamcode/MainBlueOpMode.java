@@ -95,7 +95,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region CAMERA VARS
     private LLResultTypes.FiducialResult desiredTag;
-    private static final int DESIRED_TAG_ID = 20;
+    private static final int DESIRED_TAG_ID = 24;
     private boolean facingGoal = false;
 
     //CAM PREDICTIONS
@@ -171,7 +171,8 @@ public class MainBlueOpMode extends LinearOpMode
         double lastFAdjustTime = 0;
         //endregion
 
-
+//TEMPORARY
+        double hoodPos = 230;
         //region HARDWARE INFO
         // HARDWARE MAPS
         frontLeftDrive = hardwareMap.get(DcMotor.class, "fl");
@@ -198,7 +199,6 @@ public class MainBlueOpMode extends LinearOpMode
         color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
 
         //TOGGLESERVO
-        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
 //40, 1150, 270
         //50, 1200, 270
         //60, 1250, 270
@@ -234,8 +234,6 @@ public class MainBlueOpMode extends LinearOpMode
         limelight.pipelineSwitch(0);
 
         //INIT TELEMETRY
-        telemetry.addData("Camera preview on/off", "3 dots, Camera Stream");
-        telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
 
         hood.setPosition(0);
@@ -288,40 +286,41 @@ public class MainBlueOpMode extends LinearOpMode
                 double range = x * 39.3701; //in inches
 
                 //def have to change these
-                if(slantRange >= 67 ) {
-                    hoodt.setIndex(3);
-                }
-                else {
-                    hoodt.setIndex(2);
-                }
-
-                flySpeed = 5.47 * slantRange + 933.0;
+//                if(slantRange >= 67 ) {
+//                    hoodt.setIndex(3);
+//                }
+//                else {
+//                    hoodt.setIndex(2);
+//                }
+//
+//                flySpeed = 5.47 * slantRange + 933.0;
 
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
                 telemetry.addData("Distance", "%.1f inches", slantRange);
                 telemetry.addData("TX (bearing)", "%.1f degrees", tx);
-                telemetry.addData("TY", "%.1f degrees", ty);
                 telemetry.addData("Flywheel Speed", "%.0f", flySpeed);
             }
-            else {
-                telemetry.addData("NOTHING FOUND", "NOTHING FOUND");
-                if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                    flySpeed += 50;
-                    lastTime = runtime.milliseconds();
-                }
-                if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                    flySpeed -= (flySpeed > 0)? 50:0;
-                    lastTime = runtime.milliseconds();
-                }
 
-                if(gamepad2.dpadDownWasPressed()) {
-                    hoodt.toggleLeft();
-                }
-
-                if(gamepad2.dpadUpWasPressed()) {
-                    hoodt.toggleRight();
-                }
+            if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 100)) {
+                flySpeed += 20;
+                lastTime = runtime.milliseconds();
             }
+            if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 100)) {
+                flySpeed -= (flySpeed > 0)? 20:0;
+                lastTime = runtime.milliseconds();
+            }
+
+            if(gamepad2.dpadDownWasPressed()) {
+                hoodPos += 5;
+            }
+
+            if(gamepad2.dpadUpWasPressed()) {
+                hoodPos -= 5;
+            }
+
+            hood.setPosition(hoodPos/ 355.0);
+            telemetry.addData("HOOD POSITION", hoodPos);
+
             //endregion
 
             //region FLYWHEEL AND LIGHTS
@@ -374,11 +373,11 @@ public class MainBlueOpMode extends LinearOpMode
             //region TRANSFER
             if(gamepad1.triangleWasPressed()) {
                 tranOn = !tranOn;
-                if(tranOn){
-                    trans.setPower(1);
-                }else{
-                    trans.setPower(0);
-                }
+            }
+            if(tranOn && flyOn){
+                trans.setPower(1);
+            }else{
+                trans.setPower(0);
             }
             //endregion
 
@@ -388,52 +387,18 @@ public class MainBlueOpMode extends LinearOpMode
             if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
             pidLastTimeMs = nowMs;
 
-            // === PIDF tuning via Gamepad2 ===
-            double adjustStepP = 0.0002;
-            double adjustStepI = 0.00001;
-            double adjustStepD = 0.00001;
-            double adjustStepF = 0.002;
-            double debounceTime = 50; // milliseconds
-
-            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
-                if (gamepad2.cross) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.circle) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
-                if (gamepad2.square) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.triangle) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
-                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastFAdjustTime > debounceTime) {
-                if (gamepad2.dpad_right) { pidKf += adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.dpad_left) { pidKf -= adjustStepF; lastFAdjustTime = runtime.milliseconds(); }
-            }
 
 
-            // Safety clamp
-            pidKp = Math.max(0, pidKp);
-            pidKi = Math.max(0, pidKi);
-            pidKd = Math.max(0, pidKd);
-            pidKf = Math.max(0, pidKf);
-
-            // Display PID constants on telemetry
-            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
-            telemetry.addData("kP", "%.6f", pidKp);
-            telemetry.addData("kI", "%.6f", pidKi);
-            telemetry.addData("kD", "%.6f", pidKd);
-            telemetry.addData("kF", "%.6f", pidKf);
-            //endregion
 
             //region CAROUSEL
             if (gamepad1.dpadLeftWasPressed()) {
-                carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
+                carouselIndex += carouselIndex % 2 != 0? 1:0;
+                carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             if (gamepad1.dpadRightWasPressed()) {
-                carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+                carouselIndex += carouselIndex % 2 != 0? 1:0;
+                carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             if (gamepad1.dpadUpWasPressed()) {
@@ -521,7 +486,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region COLOR SENSOR AND SAVED BALL POSITIONS
             char detectedColor = getDetectedColor();
-            telemetry.addData("Detected Color",detectedColor);
 
             if(carouselIndex==0) savedBalls[0] = detectedColor;
             if(carouselIndex==2) savedBalls[1] = detectedColor;
@@ -569,7 +533,6 @@ public class MainBlueOpMode extends LinearOpMode
             telemetry.addData("Fly power", flySpeed);
             telemetry.addData("Encoder fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
             telemetry.addData("Flying at correct power", flyAtSpeed);
-//            telemetry.addData("Hood angle:", "%.3f", hoodt.getServo().getPosition());
             telemetry.addData("Camera Localized Pos","x: %.2f y: %.2f heading: %.2f",follower.getPose().getX(),follower.getPose().getY(),Math.toDegrees(follower.getHeading()));
             telemetry.update();
             //endregion
@@ -652,9 +615,7 @@ public class MainBlueOpMode extends LinearOpMode
         lastError = error;
 
         // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("integral",integral);
         telemetry.addData("Carousel Target", "%.1f°", targetAngle);
-        telemetry.addData("SPIN VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
 
     }
 
@@ -686,8 +647,6 @@ public class MainBlueOpMode extends LinearOpMode
         float nRed = colors.red/colors.alpha;
         float nGreen = colors.green/colors.alpha;
         float nBlue = colors.blue/colors.alpha;
-
-//        telemetry.addData("Colors","Red: %3f, Green: %3f, Blue: %3f",nRed,nGreen,nBlue);
 
         if(nBlue>nGreen&&nGreen>nRed){//blue green red
             return 'p';
