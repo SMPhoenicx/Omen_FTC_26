@@ -113,6 +113,14 @@ public class MainBlueOpMode extends LinearOpMode
     final double MAX_AUTO_TURN  = 0.4;
     //endregion
 
+    double flyKp = 10.0;
+    double flyKi = 3.0;
+    double flyKd = 0.5;
+
+    double kpUp = 0.5;
+    double kiUp = 0.005;
+    double kdUp = 0.005;
+
     //region PEDROPATHING STUFF
     private Follower follower;
     PathChain endgame = null;
@@ -154,7 +162,7 @@ public class MainBlueOpMode extends LinearOpMode
         double  turn            = 0;
 
         //FLYWHEEL VARS
-        double flySpeed = 0;
+        double flySpeed = 1160;
         boolean flyOn = false;
         boolean flyAtSpeed = false;
         double lastTime = 0;
@@ -172,7 +180,7 @@ public class MainBlueOpMode extends LinearOpMode
         //endregion
 
 //TEMPORARY
-        double hoodPos = 230;
+        double hoodPos = 245;
         //region HARDWARE INFO
         // HARDWARE MAPS
         frontLeftDrive = hardwareMap.get(DcMotor.class, "fl");
@@ -329,10 +337,37 @@ public class MainBlueOpMode extends LinearOpMode
                 flyOn = !flyOn;
             }
 
-//            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-//            double compensatedF = 12.0 * (13.0 / voltage);
-//            fly1.setVelocityPIDFCoefficients(10.0, 3.0, 0.0, compensatedF);
-//            fly2.setVelocityPIDFCoefficients(10.0, 3.0, 0.0, compensatedF);
+            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
+            double compensatedF = 12.0 * (13.0 / voltage);
+
+            if(gamepad2.crossWasPressed()) {
+                if (gamepad2.leftBumperWasPressed()) {
+                    flyKp -= kpUp;
+                }
+                else flyKp += kpUp;
+            }
+            if(gamepad2.right_trigger > 0.2 || gamepad2.circleWasPressed()) {
+                if (gamepad2.leftBumperWasPressed()) {
+                    flyKi -= kiUp;
+                }
+                else flyKi += kiUp;
+            }
+            if(gamepad2.left_trigger > 0.2 || gamepad2.triangleWasPressed()) {
+                if (gamepad2.leftBumperWasPressed()) {
+                    flyKd -= kdUp;
+                }
+                else flyKd += kdUp;
+            }
+
+            voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
+            double baseF = 12.0/2427.0;
+            compensatedF = baseF * (13.0/voltage);
+            fly1.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
+            fly2.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
+
+            telemetry.addData("FLYKP", "%.5f", flyKp);
+            telemetry.addData("FLYKI", "%.5f", flyKi);
+            telemetry.addData("FLYKD", "%.5f", flyKd);
 
             if(flyOn) {
                 fly1.setVelocity(flySpeed);
@@ -344,7 +379,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             //FLYWHEEL LED
-            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50)&&(flySpeed - fly2.getVelocity() < 50)&&(flySpeed - fly2.getVelocity() > -50);
+            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)&&(flySpeed - fly1.getVelocity() > -50)&&(flySpeed - fly2.getVelocity() < 50)&&(flySpeed - fly2.getVelocity() > -50);
 
             //INDICATOR LIGHT
             if(!flyOn){
