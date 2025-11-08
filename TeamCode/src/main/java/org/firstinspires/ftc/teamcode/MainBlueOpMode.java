@@ -113,9 +113,9 @@ public class MainBlueOpMode extends LinearOpMode
     final double MAX_AUTO_TURN  = 0.4;
     //endregion
 
-    double flyKp = 10.0;
-    double flyKi = 3.0;
-    double flyKd = 0.5;
+    double flyKp = 9.0;
+    double flyKi = 0.945;
+    double flyKd = 3.0;
 
     double kpUp = 0.5;
     double kiUp = 0.005;
@@ -348,9 +348,9 @@ public class MainBlueOpMode extends LinearOpMode
             }
             if(gamepad2.right_trigger > 0.2 || gamepad2.circleWasPressed()) {
                 if (gamepad2.leftBumperWasPressed()) {
-                    flyKi -= kiUp;
+                    flyKi += kiUp;
                 }
-                else flyKi += kiUp;
+                else flyKi -= kiUp;
             }
             if(gamepad2.left_trigger > 0.2 || gamepad2.triangleWasPressed()) {
                 if (gamepad2.leftBumperWasPressed()) {
@@ -360,7 +360,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-            double baseF = 12.0/2427.0;
+            double baseF = 12.0/2450.0;
             compensatedF = baseF * (13.0/voltage);
             fly1.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
             fly2.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
@@ -421,9 +421,7 @@ public class MainBlueOpMode extends LinearOpMode
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
             if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
             pidLastTimeMs = nowMs;
-
-
-
+            //endregion
 
             //region CAROUSEL
             if (gamepad1.dpadLeftWasPressed()) {
