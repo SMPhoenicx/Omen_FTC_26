@@ -297,6 +297,7 @@ public class MainBlueOpMode extends LinearOpMode
                 double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
                 double slantRange = distMeters * 39.3701; //in inches
 
+                double range = z *39.3701;
 //                if(slantRange >= 67 ) {
 //                    hoodt.setIndex(3);
 //                }
@@ -308,8 +309,10 @@ public class MainBlueOpMode extends LinearOpMode
 
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
                 telemetry.addData("Distance", "%.1f inches", slantRange);
+                telemetry.addData("Range", "%.1f inches", range);
                 telemetry.addData("TX (bearing)", "%.1f degrees", tx);
                 telemetry.addData("Flywheel Speed", "%.0f", flySpeed);
+
             }
             //endregion
 
@@ -544,6 +547,8 @@ public class MainBlueOpMode extends LinearOpMode
                 moveRobot(drive, strafe, turn);
             }
             //endregion
+
+            telemetry.update();
         }
     }
 
