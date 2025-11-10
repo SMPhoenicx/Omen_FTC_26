@@ -32,7 +32,9 @@ public class CloseRedAuto extends LinearOpMode {
     //region PEDRO VARS
     private Follower follower;
     private Pose startPose, obelisk, shoot1, movePoint;
-    private Pose[] pickup1, pickup2, pickup3;
+    private Pose[] pickup1 = new Pose[2];
+    private Pose[] pickup2 = new Pose[2];
+    private Pose[] pickup3 = new Pose[2];
     private PathChain obeliskPath, scorePath0, pickupPath1, pickupPath2, pickupPath3, scorePath1, scorePath2, scorePath3, moveScore;
     //endregion
 
@@ -49,11 +51,11 @@ public class CloseRedAuto extends LinearOpMode {
     private CRServo spin1 = null;
     private CRServo spin2 = null;
     private Servo led = null;
-    private Servo hood = null;
-    private ToggleServo hoodt = null;
+    private CRServo hood = null;
 
     // ENCODERS
     private AnalogInput spinEncoder;
+    private AnalogInput hoodEncoder;
 
     //COLOR
     private NormalizedColorSensor color = null;
@@ -171,11 +173,12 @@ public class CloseRedAuto extends LinearOpMode {
         spin1 = hardwareMap.get(CRServo.class, "spin1");
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
-        hood = hardwareMap.get(Servo.class,"hood");
+        hood = hardwareMap.get(CRServo.class,"hood");
 //        trans =  hardwareMap.get(Servo.class,"t1");
 
         //ENCODERS
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
+        hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
 
         //COLOR SENSOR
         color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
@@ -212,7 +215,7 @@ public class CloseRedAuto extends LinearOpMode {
         follower.setStartingPose(startPose);
         createPaths();
         //endregion
-        hoodt.setIndex(2);
+        hood.setPower(0);
 
         //WAIT
         waitForStart();
@@ -222,7 +225,7 @@ public class CloseRedAuto extends LinearOpMode {
         while(opModeIsActive()){
             follower.update();
 
-            if(pathState>=3) pathState=500;
+            if(pathState>=4) pathState=500;
 
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
@@ -231,14 +234,15 @@ public class CloseRedAuto extends LinearOpMode {
                     case 0:
                         follower.followPath(obeliskPath,false);
                         pathState++;
+                        flySpeed = 1460;
+                        timeout = runtime.milliseconds()+2000;
                         break;
                     //CASE 1 is reading motif
                     case 2:
                         follower.followPath(scorePath0,true);
-                        flySpeed = 1260;
-                        transOn = true;
                         pathState++;
                         shootingState=0;
+                        transOn = true;
                         break;
                     //CASE 3 is shooting
                     //endregion
@@ -318,24 +322,25 @@ public class CloseRedAuto extends LinearOpMode {
                                     }
                                 }
                             }
-                            carouselIndex = (greenIn + (greenPos*2)) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+100;
+                            carouselIndex = Math.abs((greenIn + (greenPos*2) + 1) % CAROUSEL_POSITIONS.length);
+                            timeout=runtime.milliseconds()+2000;
                             shootingState++;
                         }
                         else if(shootingState==1){
-                            carouselIndex = (carouselIndex-2) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+100;
+                            carouselIndex = Math.abs((carouselIndex-2) % CAROUSEL_POSITIONS.length);
+                            timeout=runtime.milliseconds()+2000;
                             shootingState++;
                         }
                         else if(shootingState==2){
-                            carouselIndex = (carouselIndex-2) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+100;
+                            carouselIndex = Math.abs((carouselIndex-2) % CAROUSEL_POSITIONS.length);
+                            timeout=runtime.milliseconds()+2000;
                             shootingState++;
                         }
                         else if(shootingState==3){
-                            carouselIndex = (carouselIndex-1) % CAROUSEL_POSITIONS.length;
+                            carouselIndex = Math.abs((carouselIndex-1) % CAROUSEL_POSITIONS.length);
                             shootingState++;
                             pathState++;
+                            timeout=runtime.milliseconds()+2000;
                             savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
                         }
                         //endregion
@@ -427,11 +432,13 @@ public class CloseRedAuto extends LinearOpMode {
             //region TELEMETRY
             if(!running) telemetry.addLine("Done!");
             telemetry.addData("path state", pathState);
+            telemetry.addData("shooting state",shootingState);
             telemetry.addData("x", follower.getPose().getX());
             telemetry.addData("y", follower.getPose().getY());
             telemetry.addData("heading", follower.getPose().getHeading());
             telemetry.addData("Green Position",greenPos);
             telemetry.addData("actual fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
+            telemetry.addData("carousel pos",carouselIndex);
             telemetry.update();
             //endregion
         }
