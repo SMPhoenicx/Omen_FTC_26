@@ -242,7 +242,6 @@ public class CloseRedAuto extends LinearOpMode {
                         follower.followPath(scorePath0,true);
                         pathState++;
                         shootingState=0;
-                        transOn = true;
                         break;
                     //CASE 3 is shooting
                     //endregion
@@ -322,22 +321,27 @@ public class CloseRedAuto extends LinearOpMode {
                                     }
                                 }
                             }
-                            carouselIndex = Math.abs((greenIn + (greenPos*2) + 1) % CAROUSEL_POSITIONS.length);
+                            int diff = (greenIn - greenPos) % 3;
+                            if(diff==0) carouselIndex=4;
+                            else if(diff==1) carouselIndex=2;
+                            else carouselIndex=0;
+//                            carouselIndex+=1;
                             timeout=runtime.milliseconds()+2000;
                             shootingState++;
                         }
                         else if(shootingState==1){
-                            carouselIndex = Math.abs((carouselIndex-2) % CAROUSEL_POSITIONS.length);
+                            transOn = true;
+                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                             timeout=runtime.milliseconds()+2000;
                             shootingState++;
                         }
                         else if(shootingState==2){
-                            carouselIndex = Math.abs((carouselIndex-2) % CAROUSEL_POSITIONS.length);
+                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                             timeout=runtime.milliseconds()+2000;
                             shootingState++;
                         }
                         else if(shootingState==3){
-                            carouselIndex = Math.abs((carouselIndex-1) % CAROUSEL_POSITIONS.length);
+                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                             shootingState++;
                             pathState++;
                             timeout=runtime.milliseconds()+2000;
