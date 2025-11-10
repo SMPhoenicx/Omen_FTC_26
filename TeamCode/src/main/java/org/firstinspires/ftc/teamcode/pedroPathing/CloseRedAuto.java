@@ -88,16 +88,16 @@ public class CloseRedAuto extends LinearOpMode {
     double flyKd = 3.0;
 
     public void createPoses(){
-        startPose = new Pose(121,129,Math.toRadians(45));
-        obelisk = new Pose(101,109,Math.toRadians(135));
-        pickup1[0] = new Pose(103,94,Math.toRadians(0));
-        pickup1[1] = new Pose(110,94,Math.toRadians(0));
-        pickup2[0] = new Pose(103,90,Math.toRadians(0));
-        pickup2[1] = new Pose(110,90,Math.toRadians(0));
-        pickup3[0] = new Pose(103,86,Math.toRadians(0));
-        pickup3[1] = new Pose(110,86,Math.toRadians(0));
-        shoot1 = new Pose(144-42,94,Math.toRadians(45));
-        movePoint = new Pose(144-42,85,Math.toRadians(45));
+        startPose = new Pose(121,121,Math.toRadians(45));
+        obelisk = new Pose(85,85,Math.toRadians(135));
+        pickup1[0] = new Pose(101,84,Math.toRadians(0));
+        pickup1[1] = new Pose(133,84,Math.toRadians(0));
+        pickup2[0] = new Pose(101,60,Math.toRadians(0));
+        pickup2[1] = new Pose(133,60,Math.toRadians(0));
+        pickup3[0] = new Pose(101,35,Math.toRadians(0));
+        pickup3[1] = new Pose(133,35,Math.toRadians(0));
+        shoot1 = new Pose(106,106,Math.toRadians(45));
+        movePoint = new Pose(114,77,Math.toRadians(45));
     }
 
     public void createPaths(){
@@ -155,7 +155,7 @@ public class CloseRedAuto extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         //region MAIN VARS
         int pathState = 0;
-        int shootingState = 3;
+        int shootingState = 4;
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
@@ -222,124 +222,124 @@ public class CloseRedAuto extends LinearOpMode {
         while(opModeIsActive()){
             follower.update();
 
+            if(pathState>=3) pathState=500;
+
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
                 switch(pathState){
-                    //CYCLE ZERO (READ MOTIF)
+                    //region CYCLE ZERO (READ MOTIF)
                     case 0:
                         follower.followPath(obeliskPath,false);
                         pathState++;
                         break;
-                    //case 1 is reading motif
+                    //CASE 1 is reading motif
                     case 2:
                         follower.followPath(scorePath0,true);
                         flySpeed = 1260;
                         transOn = true;
                         pathState++;
-                        break;
-                    case 3:
                         shootingState=0;
+                        break;
+                    //CASE 3 is shooting
+                    //endregion
+
+                    //region CYCLE ONE
+                    case 4:
+                        flySpeed = 0;
+                        transOn=false;
+                        intake.setPower(1);
+                        follower.followPath(pickupPath1,true);
                         pathState++;
                         break;
-                    case 4:
-                    case 9:
+                    //CASE 5 is intaking
+                    case 6:
+                        follower.followPath(scorePath1,true);
+                        flySpeed = 1260;
+                        transOn = true;
+                        pathState++;
+                        shootingState=0;
+                        break;
+                    //CASE 7 is shooting
+                    //endregion
+
+                    //region CYCLE TWO
+                    case 8:
+                        flySpeed = 0;
+                        transOn=false;
+                        intake.setPower(1);
+                        follower.followPath(pickupPath1,true);
+                        pathState++;
+                        break;
+                    //CASE 9 is intaking
+                    case 10:
+                        follower.followPath(scorePath1,true);
+                        flySpeed = 1260;
+                        transOn = true;
+                        pathState++;
+                        shootingState=0;
+                        break;
+                    //CASE 11 is shooting
+                    //endregion
+
+                    //region CYCLE THREE
+                    case 12:
+                        flySpeed = 0;
+                        transOn=false;
+                        intake.setPower(1);
+                        follower.followPath(pickupPath1,true);
+                        pathState++;
+                        break;
+                    //CASE 13 is intaking
                     case 14:
-                    case 19:
+                        follower.followPath(scorePath1,true);
+                        flySpeed = 1260;
+                        transOn = true;
+                        pathState++;
+                        shootingState=0;
+                        break;
+                    //CASE 15 is shooting
+                    //endregion
+
+                    case 3:
+                    case 7:
+                    case 11:
+                    case 15:
                         //region SHOOTING
                         if(shootingState==0){
+                            int greenIn=1;
                             for(int i=0;i<3;i++){
                                 if(savedBalls[i]=='g'){
                                     if(i==0){
-                                        carouselIndex=3;
+                                        greenIn=3;
                                     }else if(i==1){
-                                        carouselIndex=5;
+                                        greenIn=5;
                                     }else{//i==2 + else
-                                        carouselIndex=1;
+                                        greenIn=1;
                                     }
                                 }
                             }
+                            carouselIndex = (greenIn + (greenPos*2)) % CAROUSEL_POSITIONS.length;
                             timeout=runtime.milliseconds()+100;
                             shootingState++;
                         }
                         else if(shootingState==1){
-                            carouselIndex+=2;
-                            if (carouselIndex>5) carouselIndex -= 6;
+                            carouselIndex = (carouselIndex-2) % CAROUSEL_POSITIONS.length;
                             timeout=runtime.milliseconds()+100;
                             shootingState++;
                         }
                         else if(shootingState==2){
-                            carouselIndex+=3;
-                            if (carouselIndex>5) carouselIndex -= 6;
+                            carouselIndex = (carouselIndex-2) % CAROUSEL_POSITIONS.length;
                             timeout=runtime.milliseconds()+100;
+                            shootingState++;
+                        }
+                        else if(shootingState==3){
+                            carouselIndex = (carouselIndex-1) % CAROUSEL_POSITIONS.length;
                             shootingState++;
                             pathState++;
                             savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
                         }
                         //endregion
                         break;
-
-                    //CYCLE ONE
-                    case 5:
-                        flySpeed = 0;
-                        transOn=false;
-                        intake.setPower(1);
-                        follower.followPath(pickupPath1,true);
-                        pathState++;
-                        break;
-                    //case 6 is intaking
-                    case 7:
-                        follower.followPath(scorePath1,true);
-                        flySpeed = 1260;
-                        transOn = true;
-                        pathState++;
-                        break;
-                    case 8:
-                        shootingState=0;
-                        pathState++;
-                        break;
-                    //case 9 is shooting
-
-                        //CYCLE TWO
-                    case 10:
-                        flySpeed = 0;
-                        transOn=false;
-                        intake.setPower(1);
-                        follower.followPath(pickupPath1,true);
-                        pathState++;
-                        break;
-                    //case 11 is intaking
-                    case 12:
-                        follower.followPath(scorePath1,true);
-                        flySpeed = 1260;
-                        transOn = true;
-                        pathState++;
-                        break;
-                    case 13:
-                        shootingState=0;
-                        pathState++;
-                        break;
-                    //case 14 is shooting
-
-                    //CYCLE THREE
-                    case 15:
-                        flySpeed = 0;
-                        transOn=false;
-                        intake.setPower(1);
-                        follower.followPath(pickupPath1,true);
-                        pathState++;
-                        break;
-                    //case 16 is intaking
-                    case 17:
-                        follower.followPath(scorePath1,true);
-                        flySpeed = 1260;
-                        transOn = true;
-                        pathState++;
-                        break;
-                    case 18:
-                        shootingState=0;
-                        pathState++;
-                        break;
-                    //case 19 is shooting
 
                     //end of auto
                     case 20:
@@ -349,7 +349,6 @@ public class CloseRedAuto extends LinearOpMode {
                         break;
                     default:
                         running=false;
-                        telemetry.addLine("Done!");
                         break;
                 }
 
@@ -358,13 +357,12 @@ public class CloseRedAuto extends LinearOpMode {
             //endregion
 
             //region INTAKE
-            if(pathState==6||pathState==11||pathState==17){
-                if(getDetectedColor()!='n'&&savedBalls[carouselIndex/2]=='n'){
+            if(pathState==5||pathState==9||pathState==13){
+                if(getDetectedColor()!='n'&&savedBalls[carouselIndex/2]=='n'){//detect one ball intake
                     savedBalls[carouselIndex/2]=getDetectedColor();
-                    carouselIndex+=2;
-                    if (carouselIndex>5) carouselIndex -= 6;
+                    carouselIndex = (carouselIndex-2) % CAROUSEL_POSITIONS.length;
                 }
-                //if full
+                //if spindexer is full
                 boolean full = true;
                 for(int i=0;i<3;i++){
                     if(savedBalls[i]=='n'){
@@ -427,6 +425,7 @@ public class CloseRedAuto extends LinearOpMode {
             //endregion
 
             //region TELEMETRY
+            if(!running) telemetry.addLine("Done!");
             telemetry.addData("path state", pathState);
             telemetry.addData("x", follower.getPose().getX());
             telemetry.addData("y", follower.getPose().getY());

@@ -398,6 +398,9 @@ public class MainBlueOpMode extends LinearOpMode
             if (intakeOn) {
                 intake.setPower(intakePower);
             }
+            else {
+                intake.setPower(0);
+            }
             //endregion
 
             //region TRANSFER CONTROL
