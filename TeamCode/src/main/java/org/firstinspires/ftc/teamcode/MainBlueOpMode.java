@@ -366,14 +366,11 @@ public class MainBlueOpMode extends LinearOpMode
             //region HOOD CONTROL
             // Hood Position Selection
             if (gamepad2.dpadUpWasPressed()) {
-                if (hoodIndex < hoodAngles.length - 1) {
-                    hoodIndex++;
-                }
+                hoodIndex += 5;
             }
             if (gamepad2.dpadDownWasPressed()) {
-                if (hoodIndex > 0) {
-                    hoodIndex--;
-                }
+                    hoodIndex -= 5;
+
             }
 
             // Update Hood PID
@@ -381,7 +378,7 @@ public class MainBlueOpMode extends LinearOpMode
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
             if (dtSec <= 0.0) dtSec = 1.0 / 50.0; // fallback
             //(angles must be negative for our direction)
-            updateHoodPID(-hoodAngles[hoodIndex], dtSec);
+            updateHoodPID(-hoodIndex, dtSec);
             //endregion
 
             //region INTAKE CONTROL
