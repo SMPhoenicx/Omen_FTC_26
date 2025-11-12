@@ -115,6 +115,7 @@ public class MainBlueOpMode extends LinearOpMode
     double flyKp = 9.0;
     double flyKi = 1.0;
     double flyKd = 3.0;
+    double flyKiOffset = 0.0;
     //endregion
 
     //region HOOD SYSTEM
@@ -297,9 +298,16 @@ public class MainBlueOpMode extends LinearOpMode
                 double y = targetPose.getPosition().y;
                 double z = targetPose.getPosition().z;
 
+                Pose3D robotPose = desiredTag.getRobotPoseTargetSpace(); //gets position of tag relative to robot
+                double robotX = targetPose.getPosition().x;
+                double robotY = targetPose.getPosition().y;
+                double robotZ = targetPose.getPosition().z;
+
                 // Calculate distances
                 double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
                 double slantRange = distMeters * 39.3701; //in inches
+
+                flyKiOffset = slantRange > 65 ? 0:0.1;
 
                 double range = z *39.3701;
                 flySpeed = 9.11 * slantRange + 880;
@@ -308,8 +316,10 @@ public class MainBlueOpMode extends LinearOpMode
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
                 telemetry.addData("Distance", "%.1f inches", slantRange);
                 telemetry.addData("Range", "%.1f inches", range);
+                telemetry.addData("X val", robotX);
+                telemetry.addData("Y val", robotY);
+                telemetry.addData("Z val", robotZ);
                 telemetry.addData("TX (bearing)", "%.1f degrees", tx);
-                telemetry.addData("Flywheel Speed", "%.0f", flySpeed);
 
             }
             //endregion
@@ -340,8 +350,8 @@ public class MainBlueOpMode extends LinearOpMode
             double baseF = 12.0 / 2450.0;
             double compensatedF = baseF * (13.0 / voltage);
             //Set custom PID values
-            fly1.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
-            fly2.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
+            fly1.setVelocityPIDFCoefficients(flyKp, flyKi+flyKiOffset, flyKd, compensatedF);
+            fly2.setVelocityPIDFCoefficients(flyKp, flyKi+flyKiOffset, flyKd, compensatedF);
 
             // Set Flywheel Velocity
             if (flyOn) {
@@ -479,7 +489,8 @@ public class MainBlueOpMode extends LinearOpMode
                     double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
                     double slantRange = round(distMeters * 39.3701 / 5.0) * 5.0; //in inches
 
-                    double tx = slantRange <= 65 ? desiredTag.getTargetXDegrees():desiredTag.getTargetXDegrees()+5;
+                    double txRaw = desiredTag.getTargetXDegrees();
+                    double tx = desiredTag.getTargetXDegrees()+5;
                     //save for smoothing
                     lastKnownBearing = tx;
                     lastDetectionTime = System.currentTimeMillis();
@@ -560,6 +571,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
             //endregion
 
+            telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.update();
         }
     }
