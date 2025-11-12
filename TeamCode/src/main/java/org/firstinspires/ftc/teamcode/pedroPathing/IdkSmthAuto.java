@@ -25,8 +25,8 @@ import org.firstinspires.ftc.teamcode.ToggleServo;
 
 import java.util.List;
 
-@Autonomous(name="Close Red Auto", group="Robot")//Copy of IdkSmthAuto except the pickup path is split into two paths
-public class CloseRedAuto extends LinearOpMode {
+@Autonomous(name="IdkSmthAuto", group="Robot")//like basically the same as the auto from Monday afternoon (runs intake at one continuous path)
+public class IdkSmthAuto extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
 
@@ -36,10 +36,7 @@ public class CloseRedAuto extends LinearOpMode {
     private Pose[] pickup1 = new Pose[2];
     private Pose[] pickup2 = new Pose[2];
     private Pose[] pickup3 = new Pose[2];
-    private PathChain obeliskPath, scorePath0, scorePath1, scorePath2, scorePath3, moveScore;
-    private PathChain[] pickupPath1 = new PathChain[2];
-    private PathChain[] pickupPath2 = new PathChain[2];
-    private PathChain[] pickupPath3 = new PathChain[2];
+    private PathChain obeliskPath, scorePath0, pickupPath1, pickupPath2, pickupPath3, scorePath1, scorePath2, scorePath3, moveScore;
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -144,34 +141,25 @@ public class CloseRedAuto extends LinearOpMode {
                 .addPath(new BezierLine(obelisk,shoot1))
                 .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,144))
                 .build();
-        pickupPath1[0] = follower.pathBuilder()
+        pickupPath1 = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,pickup1[0]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup1[0].getHeading())
-                .setBrakingStrength(0.5)
-                .build();
-        pickupPath1[1] = follower.pathBuilder()
                 .addPath(new BezierLine(pickup1[0],pickup1[1]))
                 .setLinearHeadingInterpolation(pickup1[0].getHeading(),pickup1[1].getHeading())
                 .setBrakingStrength(0.5)
                 .setTimeoutConstraint(500)
                 .build();
-        pickupPath2[0] = follower.pathBuilder()
+        pickupPath2 = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,pickup2[0]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[0].getHeading())
-                .setBrakingStrength(0.5)
-                .build();
-        pickupPath2[1] = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2[0],pickup2[1]))
                 .setLinearHeadingInterpolation(pickup2[0].getHeading(),pickup2[1].getHeading())
                 .setBrakingStrength(0.5)
                 .setTimeoutConstraint(500)
                 .build();
-        pickupPath3[0] = follower.pathBuilder()
+        pickupPath3 = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,pickup3[0]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[0].getHeading())
-                .setBrakingStrength(0.5)
-                .build();
-        pickupPath3[1] = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3[0],pickup3[1]))
                 .setLinearHeadingInterpolation(pickup3[0].getHeading(),pickup3[1].getHeading())
                 .setBrakingStrength(0.5)
@@ -267,7 +255,7 @@ public class CloseRedAuto extends LinearOpMode {
         while(opModeIsActive()){
             follower.update();
 
-            if(pathState>=9) pathState=500;
+            if(pathState>=8) pathState=500;
 
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
@@ -293,74 +281,62 @@ public class CloseRedAuto extends LinearOpMode {
                         flySpeed = 0;
                         transOn=false;
                         intake.setPower(1);
-                        follower.followPath(pickupPath1[0],true);
+                        follower.followPath(pickupPath1,true);
                         pathState++;
                         break;
-                    case 5:
-                        follower.followPath(pickupPath1[1],0.3,true);
-                        pathState++;
-                        break;
-                    //CASE 6 is intaking
-                    case 7:
+                    //CASE 5 is intaking
+                    case 6:
                         follower.followPath(scorePath1,true);
                         flySpeed = 1260;
                         transOn = true;
                         pathState++;
                         shootingState=0;
                         break;
-                    //CASE 8 is shooting
+                    //CASE 7 is shooting
                     //endregion
 
                     //region CYCLE TWO
-                    case 9:
+                    case 8:
                         flySpeed = 0;
                         transOn=false;
                         intake.setPower(1);
-                        follower.followPath(pickupPath2[0],true);
+                        follower.followPath(pickupPath1,true);
                         pathState++;
                         break;
+                    //CASE 9 is intaking
                     case 10:
-                        follower.followPath(pickupPath2[1],0.3,true);
-                        pathState++;
-                        break;
-                    //CASE 11 is intaking
-                    case 12:
                         follower.followPath(scorePath1,true);
                         flySpeed = 1260;
                         transOn = true;
                         pathState++;
                         shootingState=0;
                         break;
-                    //CASE 13 is shooting
+                    //CASE 11 is shooting
                     //endregion
 
                     //region CYCLE THREE
-                    case 14:
+                    case 12:
                         flySpeed = 0;
                         transOn=false;
                         intake.setPower(1);
-                        follower.followPath(pickupPath3[0],true);
+                        follower.followPath(pickupPath1,true);
                         pathState++;
                         break;
-                    case 15:
-                        follower.followPath(pickupPath3[1],0.3,true);
-                        pathState++;
-                        break;
-                    //CASE 16 is intaking
-                    case 17:
+                    //CASE 13 is intaking
+                    case 14:
                         follower.followPath(scorePath1,true);
                         flySpeed = 1260;
                         transOn = true;
                         pathState++;
                         shootingState=0;
                         break;
-                    //CASE 18 is shooting
+                    //CASE 15 is shooting
                     //endregion
 
                     case 3:
-                    case 8:
-                    case 13:
-                    case 18:
+                    case 7:
+                    case 11:
+                    case 15:
                         //region SHOOTING
                         if(shootingState==0){
                             int greenIn=1;
@@ -420,7 +396,7 @@ public class CloseRedAuto extends LinearOpMode {
             //endregion
 
             //region INTAKE
-            if((pathState==6||pathState==11||pathState==16)&&runtime.milliseconds()>timeout){
+            if((pathState==5||pathState==9||pathState==13)&&runtime.milliseconds()>timeout){
                 if(getDetectedColor()!='n'&&savedBalls[carouselIndex/2]=='n'){//detect one ball intake
                     savedBalls[carouselIndex/2]=getDetectedColor();
                     carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
