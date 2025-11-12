@@ -99,6 +99,7 @@ public class MainBlueOpMode extends LinearOpMode
     private double lastKnownRange = 0;
     private long lastDetectionTime = 0;
     private static final long PREDICTION_TIMEOUT = 400;
+    private double txOffset = 0;
 
     // Heading PID
     private double lastHeadingError = 0;
@@ -299,15 +300,26 @@ public class MainBlueOpMode extends LinearOpMode
                 double z = targetPose.getPosition().z;
 
                 Pose3D robotPose = desiredTag.getRobotPoseTargetSpace(); //gets position of tag relative to robot
-                double robotX = targetPose.getPosition().x;
-                double robotY = targetPose.getPosition().y;
-                double robotZ = targetPose.getPosition().z;
+                double robotX = robotPose.getPosition().x;
+                double robotY = robotPose.getPosition().y;
+                double robotZ = robotPose.getPosition().z;
+
+                if (robotX < -0.15) {
+                    txOffset = 5;
+                }
+                else if (robotX > 0.3) {
+                    txOffset = -5;
+                }
+                else {
+                    txOffset = 0;
+                }
 
                 // Calculate distances
                 double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
                 double slantRange = distMeters * 39.3701; //in inches
 
-                flyKiOffset = slantRange > 65 ? 0:0.1;
+
+                flyKiOffset = slantRange > 65 ? 0:0.12;
 
                 double range = z *39.3701;
                 flySpeed = 9.11 * slantRange + 880;
@@ -490,7 +502,7 @@ public class MainBlueOpMode extends LinearOpMode
                     double slantRange = round(distMeters * 39.3701 / 5.0) * 5.0; //in inches
 
                     double txRaw = desiredTag.getTargetXDegrees();
-                    double tx = desiredTag.getTargetXDegrees()+5;
+                    double tx = desiredTag.getTargetXDegrees()+txOffset;
                     //save for smoothing
                     lastKnownBearing = tx;
                     lastDetectionTime = System.currentTimeMillis();
