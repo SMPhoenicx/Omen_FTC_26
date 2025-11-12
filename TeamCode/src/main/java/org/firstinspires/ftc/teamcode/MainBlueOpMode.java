@@ -29,6 +29,8 @@
 
 package org.firstinspires.ftc.teamcode;
 
+import static java.lang.Math.round;
+
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
@@ -105,12 +107,13 @@ public class MainBlueOpMode extends LinearOpMode
     double TURN_D = 0.002;
     final double TURN_GAIN = 0.02;
     final double MAX_AUTO_TURN = 0.4;
+    private double distCamOffset = 0;
 //endregion
 
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 0.945;
+    double flyKi = 1.0;
     double flyKd = 3.0;
     //endregion
 
@@ -134,8 +137,8 @@ public class MainBlueOpMode extends LinearOpMode
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private int hoodIndex = 0;
-    private final double[] hoodAngles = {0, 100, 200, 300};
+    private double hoodAngle = 0;
+    private double hoodOffset = 0;
     //endregion
 
     //region CAROUSEL SYSTEM
@@ -191,6 +194,7 @@ public class MainBlueOpMode extends LinearOpMode
 
         // Flywheel Control
         double flySpeed = 1160;
+        double flyOffset = 0;
         double lastTime = 0;
         double transTime = 0;
 
@@ -298,14 +302,8 @@ public class MainBlueOpMode extends LinearOpMode
                 double slantRange = distMeters * 39.3701; //in inches
 
                 double range = z *39.3701;
-//                if(slantRange >= 67 ) {
-//                    hoodt.setIndex(3);
-//                }
-//                else {
-//                    hoodt.setIndex(2);
-//                }
-//
-//                flySpeed = 5.47 * slantRange + 933.0;
+                flySpeed = 9.11 * slantRange + 880;
+                hoodAngle = -3.67 * slantRange + 130;
 
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
                 telemetry.addData("Distance", "%.1f inches", slantRange);
@@ -318,17 +316,22 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region FLYWHEEL CONTROL
             // Manual Speed Adjustment
-            if (gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 100)) {
-                flySpeed += 20;
+            if (gamepad2.right_trigger > 0.3 && !(gamepad2.left_trigger > 0.3) && (runtime.milliseconds() - lastTime > 200)) {
+                flyOffset += 10;
                 lastTime = runtime.milliseconds();
             }
-            if (gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 100)) {
-                flySpeed -= (flySpeed > 0) ? 20 : 0;
+            if (gamepad2.left_trigger > 0.3 && !(gamepad2.right_trigger > 0.3) && (runtime.milliseconds() - lastTime > 200)) {
+                flyOffset -= 10;
                 lastTime = runtime.milliseconds();
+            }
+            if (gamepad2.left_trigger > 0.3 && gamepad2.right_trigger > 0.3) {
+                flyOffset = 0;
+                hoodOffset = 0;
             }
 
+
             // Flywheel Toggle
-            if (gamepad1.crossWasPressed()) {
+            if (gamepad2.crossWasPressed()) {
                 flyOn = !flyOn;
             }
 
@@ -342,8 +345,8 @@ public class MainBlueOpMode extends LinearOpMode
 
             // Set Flywheel Velocity
             if (flyOn) {
-                fly1.setVelocity(flySpeed);
-                fly2.setVelocity(flySpeed);
+                fly1.setVelocity(flySpeed + flyOffset);
+                fly2.setVelocity(flySpeed + flyOffset);
             } else {
                 fly1.setVelocity(0);
                 fly2.setVelocity(0);
@@ -365,11 +368,11 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region HOOD CONTROL
             // Hood Position Selection
-            if (gamepad2.dpadUpWasPressed()) {
-                hoodIndex += 5;
+            if (gamepad1.dpadUpWasPressed()) {
+                hoodOffset += 5;
             }
-            if (gamepad2.dpadDownWasPressed()) {
-                    hoodIndex -= 5;
+            if (gamepad1.dpadDownWasPressed()) {
+                hoodOffset -= 5;
 
             }
 
@@ -378,7 +381,7 @@ public class MainBlueOpMode extends LinearOpMode
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
             if (dtSec <= 0.0) dtSec = 1.0 / 50.0; // fallback
             //(angles must be negative for our direction)
-            updateHoodPID(-hoodIndex, dtSec);
+            updateHoodPID(hoodAngle + hoodOffset, dtSec);
             //endregion
 
             //region INTAKE CONTROL
@@ -401,7 +404,7 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region TRANSFER CONTROL
-            if (gamepad1.triangleWasPressed()) {
+            if (gamepad2.triangleWasPressed()) {
                 tranOn = !tranOn;
             }
             if (tranOn && flyOn) {
@@ -414,23 +417,23 @@ public class MainBlueOpMode extends LinearOpMode
             //region CAROUSEL CONTROL
             // Carousel Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
-            if (gamepad1.dpadLeftWasPressed()) {
+            if (gamepad2.dpadLeftWasPressed()) {
                 carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
                 carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
-            if (gamepad1.dpadRightWasPressed()) {
+            if (gamepad2.dpadRightWasPressed()) {
                 carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
                 carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             //Down and Up go to transfer positions, aka the even numbered indices on the pos array
-            if (gamepad1.dpadUpWasPressed()) {
+            if (gamepad2.dpadUpWasPressed()) {
                 carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
                 carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
-            if (gamepad1.dpadDownWasPressed()) {
+            if (gamepad2.dpadDownWasPressed()) {
                 carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
                 carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
@@ -467,7 +470,16 @@ public class MainBlueOpMode extends LinearOpMode
             if (facingGoal) {
                 if (targetFound && desiredTag != null) {
                     // Live tracking
-                    double tx = desiredTag.getTargetXDegrees();
+                    Pose3D targetPose = desiredTag.getTargetPoseRobotSpace(); //gets position of tag relative to robot
+                    double x = targetPose.getPosition().x;
+                    double y = targetPose.getPosition().y;
+                    double z = targetPose.getPosition().z;
+
+                    // Calculate distances
+                    double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
+                    double slantRange = round(distMeters * 39.3701 / 5.0) * 5.0; //in inches
+
+                    double tx = slantRange <= 65 ? desiredTag.getTargetXDegrees():desiredTag.getTargetXDegrees()+5;
                     //save for smoothing
                     lastKnownBearing = tx;
                     lastDetectionTime = System.currentTimeMillis();
@@ -521,7 +533,7 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region ENDGAME NAVIGATION
-            if (gamepad1.circleWasPressed() && !follower.isBusy() && localizeApril) {
+            if (gamepad1.dpadLeftWasPressed() && gamepad1.circleWasPressed() && !follower.isBusy() && localizeApril) {
                 endgame = follower.pathBuilder()
                         .addPath(new BezierLine(follower.getPose(), endgamePose))
                         .setLinearHeadingInterpolation(follower.getHeading(), endgamePose.getHeading())
