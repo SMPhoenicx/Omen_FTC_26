@@ -128,15 +128,15 @@ public class CloseRedAuto extends LinearOpMode {
 
         pickup1[0] = new Pose(94,82.5,Math.toRadians(0));
         pickup1[1] = new Pose(123,82.5,Math.toRadians(0));
-        pickup1[2] = new Pose(120,82.5,Math.toRadians(45));
+        pickup1[2] = new Pose(123,85,Math.toRadians(45));
 
         pickup2[0] = new Pose(94,58,Math.toRadians(0));
         pickup2[1] = new Pose(126,58,Math.toRadians(0));
-        pickup2[2] = new Pose(116,56,Math.toRadians(45));
+        pickup2[2] = new Pose(116,57,Math.toRadians(45));
 
         pickup3[0] = new Pose(94,33,Math.toRadians(0));
         pickup3[1] = new Pose(126,33,Math.toRadians(0));
-        pickup3[2] = new Pose(116,31,Math.toRadians(45));
+        pickup3[2] = new Pose(116,32,Math.toRadians(45));
 
         shoot1 = new Pose(90,90,Math.toRadians(45));
         movePoint = new Pose(114,77,Math.toRadians(45));
@@ -212,7 +212,7 @@ public class CloseRedAuto extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         //region MAIN VARS
         int pathState = 0;
-        int shootingState = 4;
+        int shootingState = 5;
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
@@ -292,6 +292,7 @@ public class CloseRedAuto extends LinearOpMode {
                         follower.followPath(obeliskPath,false);
                         pathState++;
                         flySpeed = flySpeedTarget;
+                        timeout = runtime.milliseconds()+500;
                         break;
                     //CASE 1 is reading motif
                     case 2:
@@ -317,7 +318,7 @@ public class CloseRedAuto extends LinearOpMode {
                     //CASE 6 is intaking
                     case 7:
                         follower.followPath(scorePath1,true);
-                        transOn = true;
+//                        transOn = true;
                         pathState++;
                         shootingState=0;
                         break;
@@ -340,7 +341,7 @@ public class CloseRedAuto extends LinearOpMode {
                     case 12:
                         follower.followPath(scorePath2,true);
                         flySpeed = flySpeedTarget;
-                        transOn = true;
+//                        transOn = true;
                         pathState++;
                         shootingState=0;
                         break;
@@ -363,7 +364,7 @@ public class CloseRedAuto extends LinearOpMode {
                     case 17:
                         follower.followPath(scorePath3,true);
                         flySpeed = flySpeedTarget;
-                        transOn = true;
+//                        transOn = true;
                         pathState++;
                         shootingState=0;
                         break;
@@ -385,26 +386,25 @@ public class CloseRedAuto extends LinearOpMode {
                                     greenIn=i;
                                 }
                             }
-//                            if(greenIn==-1){
-//                                for(int i=0;i<3;i++){
-//                                    if(savedBalls[i]=='n'){
-//                                        greenIn=i;
-//                                    }
-//                                }
-//                            }
+                            if(greenIn==-1){
+                                for(int i=0;i<3;i++){
+                                    if(savedBalls[i]=='n'){
+                                        greenIn=i;
+                                    }
+                                }
+                            }
                             if(greenIn==-1) greenIn=0;
 
                             int diff = (greenIn + greenPos) % 3;
                             if(diff==0) carouselIndex=4;
                             else if(diff==1) carouselIndex=0;
                             else carouselIndex=2;
-                            timeout=runtime.milliseconds()+500;
+                            timeout=runtime.milliseconds()+400;
                             shootingState++;
                         }
-                        else if(shootingState==1){
+                        else if(shootingState==1) {
                             transOn = true;
-                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+500;
+                            timeout = runtime.milliseconds()+200;
                             shootingState++;
                         }
                         else if(shootingState==2){
@@ -413,6 +413,11 @@ public class CloseRedAuto extends LinearOpMode {
                             shootingState++;
                         }
                         else if(shootingState==3){
+                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+                            timeout=runtime.milliseconds()+500;
+                            shootingState++;
+                        }
+                        else if(shootingState==4){
                             carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                             shootingState++;
                             pathState++;
@@ -474,7 +479,7 @@ public class CloseRedAuto extends LinearOpMode {
             //endregion
 
             //region READ MOTIF
-            if(pathState==1){
+            if(pathState==1&&timeout<runtime.milliseconds()){
                 int april = readMotif();
                 if(april!=-1) {
                     if (april == 21) {
@@ -644,14 +649,19 @@ public class CloseRedAuto extends LinearOpMode {
 
     private int readMotif(){
         LLResult result = limelight.getLatestResult();
+        int numTags = 0;
+        int lastTagIndex = 0;
+
         if (result != null && result.isValid()) {
             List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
             for (LLResultTypes.FiducialResult fiducial : fiducials) {
                 if (fiducial.getFiducialId() == 21||fiducial.getFiducialId() == 22||fiducial.getFiducialId() == 23) {
-                    return fiducial.getFiducialId();
+                    numTags++;
                 }
             }
-
+            if(numTags==1){
+                return fiducials.get(lastTagIndex).getFiducialId();
+            }
         }
         return -1;
     }
