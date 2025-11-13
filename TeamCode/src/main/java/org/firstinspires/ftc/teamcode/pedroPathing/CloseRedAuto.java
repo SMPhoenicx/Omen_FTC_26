@@ -93,7 +93,7 @@ public class CloseRedAuto extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = 0;
+    private double hoodAngle = -11.8;
     private double hoodOffset = 0;
     //endregion
 
@@ -121,7 +121,7 @@ public class CloseRedAuto extends LinearOpMode {
 
     // Ball Storage Tracking
     // 'n' = none (empty), 'p' = purple, 'g' = green
-    private char[] savedBalls = {'n', 'n', 'n'};
+    private char[] savedBalls = {'g', 'p', 'p'};
     int greenPos=0;
     //endregion
 
@@ -219,7 +219,7 @@ public class CloseRedAuto extends LinearOpMode {
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
-        int flySpeedTarget = 1530;
+        int flySpeedTarget = 1241;
         //endregion
 
         //region HARDWARE INFO
@@ -307,7 +307,7 @@ public class CloseRedAuto extends LinearOpMode {
 
                     //region CYCLE ONE
                     case 4:
-                        flySpeed = 0;
+                        flySpeed = flySpeedTarget;
                         transOn=false;
                         intake.setPower(1);
                         follower.followPath(pickupPath1[0],true);
@@ -320,7 +320,6 @@ public class CloseRedAuto extends LinearOpMode {
                     //CASE 6 is intaking
                     case 7:
                         follower.followPath(scorePath1,true);
-                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;
@@ -381,7 +380,9 @@ public class CloseRedAuto extends LinearOpMode {
                         //region SHOOTING
                         intake.setPower(0);
                         if(shootingState==0){
-                            int greenIn=1;
+                            double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+                            if(avgSpeed < flySpeedTarget * 0.94) break;
+                            int greenIn=0;
                             for(int i=0;i<3;i++){
                                 if(savedBalls[i]=='g'){
                                     if(i==0){
@@ -404,19 +405,19 @@ public class CloseRedAuto extends LinearOpMode {
                         else if(shootingState==1){
                             transOn = true;
                             carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+300;
+                            timeout=runtime.milliseconds()+500;
                             shootingState++;
                         }
                         else if(shootingState==2){
                             carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+300;
+                            timeout=runtime.milliseconds()+500;
                             shootingState++;
                         }
                         else if(shootingState==3){
                             carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                             shootingState++;
                             pathState++;
-                            timeout=runtime.milliseconds()+300;
+                            timeout=runtime.milliseconds()+500;
                             savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
                         }
                         //endregion

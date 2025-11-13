@@ -29,427 +29,490 @@
 
 package org.firstinspires.ftc.teamcode;
 
-import android.util.Size;
+import static java.lang.Math.round;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
+import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
-import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
-import org.firstinspires.ftc.vision.VisionPortal;
-import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
-import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
-import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
-@TeleOp(name="MainRedOpMode", group = "A")
+@TeleOp(name="MainRedeOpMode", group = "A")
 public class MainRedOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
 
     //region HARDWARE DECLARATIONS
+// Drive Motors
     private DcMotor frontLeftDrive = null;
     private DcMotor frontRightDrive = null;
     private DcMotor backLeftDrive = null;
     private DcMotor backRightDrive = null;
+
+    // Mechanism Motors
     private DcMotorEx fly1 = null;
+    private DcMotorEx fly2 = null;
     private DcMotor intake = null;
     private DcMotor trans = null;
+
+    // Servos
     private Servo led = null;
-    private Servo hood = null;
-    private CRServo spin = null;
-    // ENCODERS
-    private AnalogInput spinAnalog;
-    //endregion
+    private CRServo hood = null;
+    private CRServo spin1 = null;
+    private CRServo spin2 = null;
 
-    //region CAMERA VARS
-    private static final int DESIRED_TAG_ID = 24;
-    private VisionPortal visionPortal;
-    private AprilTagProcessor aprilTag;
-    private AprilTagDetection desiredTag;
-    private boolean facingGoal = false;
+    // Sensors
+    private AnalogInput spinEncoder;
+    private AnalogInput hoodEncoder;
+    private NormalizedColorSensor color = null;
 
-    //CAM PREDICTIONS
-    private double lastKnownBearing = 0;
+    // Vision
+    private Limelight3A limelight;
+//endregion
+
+    //region VISION SYSTEM
+// AprilTag Configuration
+    private LLResultTypes.FiducialResult desiredTag;
+    private static final int DESIRED_TAG_ID = 24; //blue id is 20, red is 24
+
+    // Tracking State
+    private boolean facingGoal = false; //used for tracking
+    private double lastKnownBearing = 0; //used for smoothing
     private double lastKnownRange = 0;
     private long lastDetectionTime = 0;
-    private static final long PREDICTION_TIMEOUT = 500;
+    private static final long PREDICTION_TIMEOUT = 400;
+    private double txOffset = 0;
 
+    // Heading PID
     private double lastHeadingError = 0;
     private ElapsedTime pidTimer = new ElapsedTime();
-
     double TURN_P = 0.06;
     double TURN_D = 0.002;
-    final double TURN_GAIN   =  0.02  ;
-    final double MAX_AUTO_TURN  = 0.4;
+    final double TURN_GAIN = 0.02;
+    final double MAX_AUTO_TURN = 0.4;
+    private double distCamOffset = 0;
+//endregion
+
+    //region FLYWHEEL SYSTEM
+    // Flywheel PID Constants
+    double flyKp = 9.0;
+    double flyKi = 1.0;
+    double flyKd = 3.0;
+    double flyKiOffset = 0.0;
     //endregion
 
-    //region PEDROPATHING STUFF
-    private Follower follower;
-    PathChain endgame = null;
-    Pose endgamePose = new Pose(144-103,37.5,Math.toRadians(90));
+    //region HOOD SYSTEM
+    // Hood PIDF Constants
+    private double hoodKp = 0.0048;
+    private double hoodKi = 0.00014;
+    private double hoodKd = 0.00;
+    private double hoodKf = 0.0;
+
+    // Hood PID State
+    private double hoodIntegral = 0.0;
+    private double hoodLastError = 0.0;
+    private double hoodIntegralLimit = 50.0;
+    private double hoodOutputDeadband = 0.05;
+    private double hoodToleranceDeg = 2.0;
+
+    // Hood Tuning Adjustments
+    private final double hoodKpUp = 0.005;
+    private final double hoodKiUp = 0.00001;
+    private final double hoodKdUp = 0.005;
+
+    // Hood Positions
+    private double hoodAngle = 0;
+    private double hoodOffset = 0;
     //endregion
 
-    //region CAROUSEL PIDF STUFF
-    private  double pidKp = 0.0051;    // start small, increase until responsive
-    private  double pidKi = 0.0;  // tiny integral (if needed)
-    private  double pidKd = 0.00001;  // derivative to damp oscillation
-    private  double pidKf = 0.0;//originally 0.05    // small directional feedforward to overcome stiction
+    //region CAROUSEL SYSTEM
+    // Carousel PIDF Constants
+    private double pidKp = 0.0057;
+    private double pidKi = 0.00166;
+    private double pidKd = 0.00002;
+    private double pidKf = 0.0;
 
+    // Carousel PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 500.0; // clamp integral
+    private double integralLimit = 500.0;
+    private double pidLastTimeMs = 0.0;
 
-    private double pidLastTimeMs = 0.0; // ms timestamp for PID dt
-    // tolerance and deadband
+    // Carousel Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
-    // --- Carousel preset positions (6 presets, every 60 degrees) ---
-    private final double[] CAROUSEL_POSITIONS = {42.0, 102.0, 162.0, 222.0, 282.0, 342.0};
+
+    // Carousel Positions (6 presets, every 60 degrees)
+    // 57, 177, and 297 face the intake; others face the transfer
+    private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
     private int carouselIndex = 0;
+
+    // Ball Storage Tracking
+    // 'n' = none (empty), 'p' = purple, 'g' = green
+    private char[] savedBalls = {'n', 'n', 'n'};
     //endregion
 
-    @Override public void runOpMode()
-    {
-        //region MAIN VARS
-        //CAMERA VARS
-        boolean targetFound     = false;
+    //region PEDROPATHING SYSTEM
+    private Follower follower;
+    PathChain endgame = null;
+    Pose endgamePose = new Pose(103, 37.5, Math.toRadians(90));
+    //endregion
+
+    @Override
+    public void runOpMode() {
+        //region OPERATIONAL VARIABLES
+        // Camera State
+        boolean targetFound = false;
+
+        // Mechanism States
         boolean tranOn = false;
-
-        //DRIVE VARS
-        double  drive           = 0;
-        double  strafe          = 0;
-        double  turn            = 0;
-
-        //FLYWHEEL VARS
-        double flySpeed = 0;
+        boolean intakeOn = false;
+        double intakePower = 0;
         boolean flyOn = false;
         boolean flyAtSpeed = false;
+
+        // Drive Variables
+        double drive = 0;
+        double strafe = 0;
+        double turn = 0;
+
+        // Flywheel Control
+        double flySpeed = 1160;
+        double flyOffset = 0;
         double lastTime = 0;
         double transTime = 0;
 
-        //APRIL TAG LOCALIZE
+        // Localization
         boolean localizeApril = true;
-        double aprilLocalizationTimeout=0;
+        double aprilLocalizationTimeout = 0;
 
-        //PIDF spin idk
-        double lastPAdjustTime = 0;
-        double lastIAdjustTime = 0;
-        double lastDAdjustTime = 0;
         //endregion
 
-        //region CONTROL VARS
-        //GAMEPAD 1
-        boolean lb1Pressed = false;
-        boolean rb1Pressed = false;
-        boolean b1Pressed = false;
-        boolean a1Pressed = false;
-        boolean x1Pressed = false;
-        boolean y1Pressed = false;
-        boolean down1Pressed = false;
-        boolean up1Pressed = false;
-        boolean right1Pressed = false;
-        boolean left1Pressed = false;
-        //GAMEPAD 2
-        boolean lb2Pressed = false;
-        boolean rb2Pressed = false;
-        boolean b2Pressed = false;
-        boolean a2Pressed = false;
-        boolean x2Pressed = false;
-        boolean y2Pressed = false;
-        boolean down2Pressed = false;
-        boolean up2Pressed = false;
-        boolean right2Pressed = false;
-        boolean left2Pressed = false;
-        //endregion
-
-        initAprilTag();
-
-        //region HARDWARE INFO
-        // HARDWARE MAPS
+        //region HARDWARE INITIALIZATION
+        // Initialize Drive Motors
         frontLeftDrive = hardwareMap.get(DcMotor.class, "fl");
         frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
         backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
         backRightDrive = hardwareMap.get(DcMotor.class, "br");
+
+        // Initialize Mechanism Motors
         fly1 = hardwareMap.get(DcMotorEx.class, "fly1");
+        fly2 = hardwareMap.get(DcMotorEx.class, "fly2");
         intake = hardwareMap.get(DcMotor.class, "in");
-        trans = hardwareMap.get(DcMotor.class,"trans");
+        trans = hardwareMap.get(DcMotor.class, "trans");
 
-        //SERVOS
-        spin = hardwareMap.get(CRServo.class, "spin");
-        led = hardwareMap.get(Servo.class,"led");
-//        hood = hardwareMap.get(Servo.class,"hood");
-//        trans =  hardwareMap.get(Servo.class,"t1");
+        // Initialize Servos
+        spin1 = hardwareMap.get(CRServo.class, "spin1");
+        spin2 = hardwareMap.get(CRServo.class, "spin2");
+        led = hardwareMap.get(Servo.class, "led");
+        hood = hardwareMap.get(CRServo.class, "hood");
 
-        //ENCODERS
-        spinAnalog = hardwareMap.get(AnalogInput.class, "espin");
+        // Initialize Encoders
+        spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
+        hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
 
+        // Initialize Sensors
+        color = hardwareMap.get(NormalizedColorSensor.class, "Color 1");
 
-        //TOGGLESERVO
-//        ToggleServo hoodt = new ToggleServo(hood,  new int[]{240, 255, 270, 285, 300}, Servo.Direction.FORWARD, 270);
-//40, 1150, 270
-        //50, 1200, 270
-        //60, 1250, 270
-        //70, 1350, 285
-        //100 1450, 0.591
-
-        //MODES
+        // Configure Motor Modes
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        //DIRECTIONS
+        // Configure Motor Directions
         frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.REVERSE);
-        intake.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.FORWARD);
+        fly2.setDirection(DcMotor.Direction.REVERSE);
+        intake.setDirection(DcMotor.Direction.FORWARD);
         trans.setDirection(DcMotor.Direction.REVERSE);
-        spin.setDirection(CRServo.Direction.FORWARD);
-
+        spin1.setDirection(CRServo.Direction.FORWARD);
+        spin2.setDirection(CRServo.Direction.FORWARD);
         //endregion
 
-        //FOLLOWER SHIT
+        //region SUBSYSTEM INITIALIZATION
+        // Initialize Path Follower
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(23,120,Math.toRadians(90)));//lowkey this pos doesnt matter
+        follower.setStartingPose(new Pose(23, 120, Math.toRadians(90)));
 
-        //INIT ACTIONS
-        setManualExposure(4, 200);  // Use low exposure time to reduce motion blur
+        // Initialize Limelight
+        limelight = hardwareMap.get(Limelight3A.class, "limelight");
+        limelight.setPollRateHz(100);
+        limelight.start();
+        limelight.pipelineSwitch(0);
+        //endregion
 
-        //INIT TELEMETRY
-        telemetry.addData("Camera preview on/off", "3 dots, Camera Stream");
-        telemetry.addData(">", "Touch START to start OpMode");
         telemetry.update();
-
-//        hood.setPosition(0);
-        //WAIT
         waitForStart();
         runtime.reset();
 
-        while (opModeIsActive())
-        {
+        while (opModeIsActive()) {
             follower.update();
             pidLastTimeMs = runtime.milliseconds();
 
-            //region CAMERA
-            targetFound = false;
-            desiredTag  = null;
+            //region VISION PROCESSING
+            LLResult result = limelight.getLatestResult();
+            if (result != null && result.isValid()) {
+                targetFound = false;
+                desiredTag = null; //reset
 
-            //like so localization averages if both goals are in view
-            Pose cameraLocalize = null;
-
-            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-            for (AprilTagDetection detection : currentDetections) {
-                // Look to see if we have size info on this tag.
-                if (detection.metadata != null) {
-                    //  Check to see if we want to track towards this tag.
-                    if ((DESIRED_TAG_ID < 0) || (detection.id == DESIRED_TAG_ID)) {
-                        // Yes, we want to use this tag.
-                        desiredTag = detection;
+                List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+                for (LLResultTypes.FiducialResult fiducial : fiducials) { //if result is the one wanted, use it
+                    if (fiducial.getFiducialId() == DESIRED_TAG_ID) {
+                        desiredTag = fiducial;
                         targetFound = true;
-                    } else {
-                        // This tag is in the library, but we do not want to track it right now.
-                        telemetry.addData("Skipping", "Tag ID %d is not desired", detection.id);
+                        break;
                     }
-                    //LOCALIZATION STUFF
-                    if (!detection.metadata.name.contains("Obelisk")&&localizeApril&&runtime.milliseconds()-aprilLocalizationTimeout>50) {
-                        if(cameraLocalize==null) {
-                            cameraLocalize = new Pose(detection.robotPose.getPosition().y + 72, -detection.robotPose.getPosition().x + 72, detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS));
-                        }else{
-                            cameraLocalize = new Pose((cameraLocalize.getX()+detection.robotPose.getPosition().y + 72)/2,(cameraLocalize.getY()+ -detection.robotPose.getPosition().x + 72)/2,(cameraLocalize.getHeading()+detection.robotPose.getOrientation().getYaw(AngleUnit.RADIANS))/2);
-                        }
-                        follower.setPose(cameraLocalize);
-                        aprilLocalizationTimeout=runtime.milliseconds();
-                    }
-                }else {
-                    // This tag is NOT in the library, so we don't have enough information to track to it.
-                    telemetry.addData("Unknown", "Tag ID %d is not in TagLibrary", detection.id);
                 }
+            } else {
+                telemetry.addData("Limelight", "No Targets");
             }
 
-            // DO WHEN CAMERA TRACKING
-            //MAYBE MAKE THIS WHEN facingGoal BOOL IS TRUE?
-            if (targetFound) {
-                adjustDecimation(desiredTag.ftcPose.range);
-                double range = desiredTag.ftcPose.range;
+            // Process Target Data
+            if (targetFound && desiredTag != null) {
+                // Get target information
+                double tx = desiredTag.getTargetXDegrees(); //bearing
+                double ty = desiredTag.getTargetYDegrees();
+                double ta = desiredTag.getTargetArea();
 
-                if(range >= 67 ) {
-//                    hoodt.setIndex(3);
+                Pose3D targetPose = desiredTag.getTargetPoseRobotSpace(); //gets position of tag relative to robot
+                double x = targetPose.getPosition().x;
+                double y = targetPose.getPosition().y;
+                double z = targetPose.getPosition().z;
+
+                Pose3D robotPose = desiredTag.getRobotPoseTargetSpace(); //gets position of tag relative to robot
+                double robotX = robotPose.getPosition().x;
+                double robotY = robotPose.getPosition().y;
+                double robotZ = robotPose.getPosition().z;
+
+                if (robotX < -0.15) {
+                    txOffset = 5;
+                }
+                else if (robotX > 0.3) {
+                    txOffset = -5;
                 }
                 else {
-//                    hoodt.setIndex(2);
+                    txOffset = 0;
                 }
 
-                flySpeed = 5.47 * range + 933.0;
+                // Calculate distances
+                double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
+                double slantRange = distMeters * 39.3701; //in inches
 
-                telemetry.addData("\n>","HOLD Left-Bumper to Turn to Target\n");
-                telemetry.addData("Found", "ID %d (%s)", desiredTag.id, desiredTag.metadata.name);
-                telemetry.addData("Range",  "%5.1f inches", desiredTag.ftcPose.range);
-                telemetry.addData("Bearing","%3.0f degrees", desiredTag.ftcPose.bearing);
-                telemetry.addData("Yaw","%3.0f degrees", desiredTag.ftcPose.yaw);
-            }
-            else {
-                if(gamepad1.right_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                    flySpeed += 50;
-                    lastTime = runtime.milliseconds();
-                }
-                if(gamepad1.left_trigger > 0 && (runtime.milliseconds() - lastTime > 250)) {
-                    flySpeed -= (flySpeed > 0)? 50:0;
-                    lastTime = runtime.milliseconds();
-                }
 
-                if(gamepad1.dpad_down && !down1Pressed) {
-//                    hoodt.toggleLeft();
-                }
+                flyKiOffset = slantRange > 65 ? 0:0.12;
 
-                if(gamepad1.dpad_up && !up1Pressed) {
-//                    hoodt.toggleRight();
-                }
+                double range = z *39.3701;
+                flySpeed = 9.11 * slantRange + 880;
+                hoodAngle = -3.67 * slantRange + 130;
+
+                telemetry.addData("Target ID", desiredTag.getFiducialId());
+                telemetry.addData("Distance", "%.1f inches", slantRange);
+                telemetry.addData("Range", "%.1f inches", range);
+                telemetry.addData("X val", robotX);
+                telemetry.addData("Y val", robotY);
+                telemetry.addData("Z val", robotZ);
+                telemetry.addData("TX (bearing)", "%.1f degrees", tx);
+
             }
             //endregion
 
-            //region FLYWHEEL AND LIGHTS
-            //FLYWHEEL CONTROLS
-            if(gamepad1.a && !a1Pressed)  {
+            //region FLYWHEEL CONTROL
+            // Manual Speed Adjustment
+            if (gamepad2.right_trigger > 0.3 && !(gamepad2.left_trigger > 0.3) && (runtime.milliseconds() - lastTime > 200)) {
+                flyOffset += 10;
+                lastTime = runtime.milliseconds();
+            }
+            if (gamepad2.left_trigger > 0.3 && !(gamepad2.right_trigger > 0.3) && (runtime.milliseconds() - lastTime > 200)) {
+                flyOffset -= 10;
+                lastTime = runtime.milliseconds();
+            }
+            if (gamepad2.left_trigger > 0.3 && gamepad2.right_trigger > 0.3) {
+                flyOffset = 0;
+                hoodOffset = 0;
+            }
+
+
+            // Flywheel Toggle
+            if (gamepad2.crossWasPressed()) {
                 flyOn = !flyOn;
             }
 
-//            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-//            double compensatedF = 12.0 * (13.0 / voltage);
-//            fly1.setVelocityPIDFCoefficients(10.0, 3.0, 0.0, compensatedF);
-//            fly2.setVelocityPIDFCoefficients(10.0, 3.0, 0.0, compensatedF);
+            // Voltage Compensation
+            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
+            double baseF = 12.0 / 2450.0;
+            double compensatedF = baseF * (13.0 / voltage);
+            //Set custom PID values
+            fly1.setVelocityPIDFCoefficients(flyKp, flyKi+flyKiOffset, flyKd, compensatedF);
+            fly2.setVelocityPIDFCoefficients(flyKp, flyKi+flyKiOffset, flyKd, compensatedF);
 
-            if(flyOn) {
-                fly1.setVelocity(flySpeed);
-            }
-            else {
+            // Set Flywheel Velocity
+            if (flyOn) {
+                fly1.setVelocity(flySpeed + flyOffset);
+                fly2.setVelocity(flySpeed + flyOffset);
+            } else {
                 fly1.setVelocity(0);
+                fly2.setVelocity(0);
             }
 
-            //FLYWHEEL LED
-            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50)||(flySpeed - fly1.getVelocity() > -50);
+            // Check if Flywheel at Speed
+            flyAtSpeed = (flySpeed - fly1.getVelocity() < 50) && (flySpeed - fly1.getVelocity() > -50) &&
+                    (flySpeed - fly2.getVelocity() < 50) && (flySpeed - fly2.getVelocity() > -50);
 
-            //INDICATOR LIGHT
-            if(!flyOn){
-                led.setPosition(1);//white
-            }
-            else if(flyAtSpeed){
-                led.setPosition(0.5);//green
-            }
-            else{
-                led.setPosition(0.3);//red (ish)
+            // Update LED Indicator
+            if (!flyOn) {
+                led.setPosition(1); // white
+            } else if (flyAtSpeed) {
+                led.setPosition(0.5); // blue
+            } else {
+                led.setPosition(0.3); // red (ish)
             }
             //endregion
 
-            //region INTAKE
-            if(gamepad1.right_bumper && !rb1Pressed) {
-                if(intake.getPower() <= 0) intake.setPower(1);
-                else intake.setPower(0);
+            //region HOOD CONTROL
+            // Hood Position Selection
+            if (gamepad1.dpadUpWasPressed()) {
+                hoodOffset += 5;
             }
-            //OUTTAKE
-            if(gamepad1.left_bumper && !lb1Pressed) {
-                intake.setPower(-0.6);
-            }
-            //endregion
+            if (gamepad1.dpadDownWasPressed()) {
+                hoodOffset -= 5;
 
-            //region TRANSFER
-            if(gamepad1.y && !y1Pressed) {
-                tranOn = !tranOn;
-                if(tranOn){
-                    trans.setPower(1);
-                }else{
-                    trans.setPower(0);
-                }
             }
-            //endregion
 
-            //region ADJUST CAROUSEL PID
+            // Update Hood PID
             double nowMs = runtime.milliseconds();
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
-            if (dtSec <= 0.0) dtSec = 1.0/50.0; // fallback
-            pidLastTimeMs = nowMs;
-
-            // ENCODING FOR SERVOS
-            double volt = spinAnalog.getVoltage();
-
-            // === PIDF tuning via Gamepad2 ===
-            double adjustStepP = 0.0002;
-            double adjustStepI = 0.00001;
-            double adjustStepD = 0.00001;
-            double debounceTime = 50; // milliseconds
-
-            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
-                if (gamepad2.a) { pidKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.b) { pidKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
-                if (gamepad2.x) { pidKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.y) { pidKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
-            }
-            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
-                if (gamepad2.dpad_up) { pidKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
-                if (gamepad2.dpad_down) { pidKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
-            }
-
-
-            // Safety clamp
-            pidKp = Math.max(0, pidKp);
-            pidKi = Math.max(0, pidKi);
-            pidKd = Math.max(0, pidKd);
-
-            // Display PID constants on telemetry
-            telemetry.addData("PID Tuning", "Press A/B=P+,P- | X/Y=I+,I- | Dpad Up/Down=D+,D-");
-            telemetry.addData("kP", "%.6f", pidKp);
-            telemetry.addData("kI", "%.6f", pidKi);
-            telemetry.addData("kD", "%.6f", pidKd);
+            if (dtSec <= 0.0) dtSec = 1.0 / 50.0; // fallback
+            //(angles must be negative for our direction)
+            updateHoodPID(hoodAngle + hoodOffset, dtSec);
             //endregion
 
-            //region CAROUSEL
-            if (gamepad1.dpad_right && !right1Pressed) {
-                carouselIndex = (carouselIndex + 1) % CAROUSEL_POSITIONS.length;
-            }
-            if (gamepad1.dpad_left && !left1Pressed) {
-                carouselIndex = (carouselIndex - 1 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+            //region INTAKE CONTROL
+            if (gamepad1.rightBumperWasPressed()) {
+                intakePower = 1;
+                intakeOn = !intakeOn;
             }
 
-            // always run PID towards the current selected preset while opMode active
+            // Outtake
+            if (gamepad1.leftBumperWasPressed()) {
+                intakePower = -0.6;
+            }
+
+            if (intakeOn) {
+                intake.setPower(intakePower);
+            }
+            else {
+                intake.setPower(0);
+            }
+            //endregion
+
+            //region TRANSFER CONTROL
+            if (gamepad2.triangleWasPressed()) {
+                tranOn = !tranOn;
+            }
+            if (tranOn && flyOn) {
+                trans.setPower(1);
+            } else {
+                trans.setPower(0);
+            }
+            //endregion
+
+            //region CAROUSEL CONTROL
+            // Carousel Navigation
+            //Left and Right go to intake positions, aka the odd numbered indices on the pos array
+            if (gamepad2.dpadLeftWasPressed()) {
+                carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
+                carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
+                spinBallLED();
+            }
+            if (gamepad2.dpadRightWasPressed()) {
+                carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
+                carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+                spinBallLED();
+            }
+            //Down and Up go to transfer positions, aka the even numbered indices on the pos array
+            if (gamepad2.dpadUpWasPressed()) {
+                carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
+                carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+                spinBallLED();
+            }
+            if (gamepad2.dpadDownWasPressed()) {
+                carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
+                carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
+                spinBallLED();
+            }
+
+            // Update Carousel PID
             double targetAngle = CAROUSEL_POSITIONS[carouselIndex];
             updateCarouselPID(targetAngle, dtSec);
             //endregion
 
-            //region FACE GOAL
-            if (gamepad1.x && !x1Pressed){
+            //region COLOR SENSOR AND BALL TRACKING
+            char detectedColor = getDetectedColor();
+
+            // Update saved ball positions based on carousel position
+            if (carouselIndex == 0) savedBalls[0] = detectedColor;
+            if (carouselIndex == 2) savedBalls[1] = detectedColor;
+            if (carouselIndex == 4) savedBalls[2] = detectedColor;
+
+            // Clear ball positions when transferring
+            if (tranOn) {
+                if (carouselIndex == 1) savedBalls[2] = 0;
+                if (carouselIndex == 3) savedBalls[0] = 0;
+                if (carouselIndex == 5) savedBalls[1] = 0;
+            }
+
+            telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
+            //endregion
+
+            //region GOAL TRACKING
+            if (gamepad1.squareWasPressed()) {
                 facingGoal = !facingGoal;
             }
 
             if (facingGoal) {
-                if (targetFound) {
-                    lastKnownBearing = desiredTag.ftcPose.bearing;
-                    lastKnownRange = desiredTag.ftcPose.range;
+                if (targetFound && desiredTag != null) {
+                    // Live tracking
+                    Pose3D targetPose = desiredTag.getTargetPoseRobotSpace(); //gets position of tag relative to robot
+                    double x = targetPose.getPosition().x;
+                    double y = targetPose.getPosition().y;
+                    double z = targetPose.getPosition().z;
+
+                    // Calculate distances
+                    double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
+                    double slantRange = round(distMeters * 39.3701 / 5.0) * 5.0; //in inches
+
+                    double txRaw = desiredTag.getTargetXDegrees();
+                    double tx = desiredTag.getTargetXDegrees()+txOffset;
+                    //save for smoothing
+                    lastKnownBearing = tx;
                     lastDetectionTime = System.currentTimeMillis();
 
-                    double headingError = desiredTag.ftcPose.bearing;
-
+                    double headingError = -tx;
                     double deltaTime = pidTimer.seconds();
                     double derivative = (headingError - lastHeadingError) / deltaTime;
                     pidTimer.reset();
 
+                    //pid turning
                     if (Math.abs(headingError) < 2.0) {
                         turn = 0;
                     } else {
@@ -457,17 +520,13 @@ public class MainRedOpMode extends LinearOpMode
                     }
 
                     lastHeadingError = headingError;
-
                     telemetry.addData("Tracking", "LIVE (err: %.1f°, deriv: %.2f)", headingError, derivative);
-                }
-                else {
-                    //TRYING TO PREVENT A LOT OF TRACKING LOSS
+                } else {
+                    // Prediction when target lost
                     long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
 
                     if (timeSinceLost < PREDICTION_TIMEOUT) {
-                        // Continue tracking last known bearing
                         double headingError = lastKnownBearing;
-
                         double deltaTime = pidTimer.seconds();
                         double derivative = (headingError - lastHeadingError) / deltaTime;
                         pidTimer.reset();
@@ -480,7 +539,6 @@ public class MainRedOpMode extends LinearOpMode
                         }
 
                         lastHeadingError = headingError;
-
                         telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
                     } else {
                         turn = 0;
@@ -489,81 +547,49 @@ public class MainRedOpMode extends LinearOpMode
                         telemetry.addData("Tracking", "LOST");
                     }
                 }
-            }
-            else{
-                turn   = -gamepad1.right_stick_x;
+            } else {
+                // Manual control
+                turn = -gamepad1.right_stick_x;
                 lastHeadingError = 0;
                 pidTimer.reset();
             }
             //endregion
 
-            //region ENDGAME
-            if(gamepad1.b&&!b1Pressed&&!follower.isBusy()&&localizeApril){
+            //region ENDGAME NAVIGATION
+            if (gamepad1.dpadLeftWasPressed() && gamepad1.circleWasPressed() && !follower.isBusy() && localizeApril) {
                 endgame = follower.pathBuilder()
-                        .addPath(new BezierLine(follower.getPose(),endgamePose))
-                        .setLinearHeadingInterpolation(follower.getHeading(),endgamePose.getHeading())
+                        .addPath(new BezierLine(follower.getPose(), endgamePose))
+                        .setLinearHeadingInterpolation(follower.getHeading(), endgamePose.getHeading())
                         .build();
-                follower.followPath(endgame,true);
+                follower.followPath(endgame, true);
             }
-            if(gamepad1.b&&!b1Pressed&&!follower.isBusy()&&!localizeApril){
+            if (gamepad1.circleWasPressed() && !follower.isBusy() && !localizeApril) {
                 follower.breakFollowing();
-                localizeApril=true;
+                localizeApril = true;
             }
-            if(endgame!=null&&!follower.isBusy()){
+            if (endgame != null && !follower.isBusy()) {
                 localizeApril = false;
             }
             //endregion
 
-            //MANUAL
+            //region DRIVE CONTROL
+            // Get manual drive inputs
             drive = -gamepad1.left_stick_y;
             strafe = -gamepad1.left_stick_x;
 
-            //DRIVE
-            if(!follower.isBusy()){
+            // Apply drive commands when not path following
+            if (!follower.isBusy()) {
                 moveRobot(drive, strafe, turn);
             }
-
-            //region CONTROL RESETS
-            b1Pressed = gamepad1.b;
-            a1Pressed = gamepad1.a;
-            x1Pressed = gamepad1.x;
-            y1Pressed = gamepad1.y;
-            down1Pressed = gamepad1.dpad_down;
-            up1Pressed = gamepad1.dpad_up;
-            left1Pressed = gamepad1.dpad_left;
-            right1Pressed = gamepad1.dpad_right;
-            lb1Pressed = gamepad1.left_bumper;
-            rb1Pressed = gamepad1.right_bumper;
-
-            b2Pressed = gamepad2.b;
-            a2Pressed = gamepad2.a;
-            x2Pressed = gamepad2.x;
-            y2Pressed = gamepad2.y;
-            down2Pressed = gamepad2.dpad_down;
-            up2Pressed = gamepad2.dpad_up;
-            left2Pressed = gamepad2.dpad_left;
-            right2Pressed = gamepad2.dpad_right;
-            lb2Pressed = gamepad2.left_bumper;
-            rb2Pressed = gamepad2.right_bumper;
             //endregion
 
-            //region TELEMETRY
-            telemetry.addData("Status", "Run Time: " + runtime.toString());
-            telemetry.addData("Fly state", flyOn);
-            telemetry.addData("Fly power", flySpeed);
-            telemetry.addData("Encoder fly speed","Wheel 1: %.1f", fly1.getVelocity());
-            telemetry.addData("Flying at correct power", flyAtSpeed);
-//            telemetry.addData("Hood angle:", "%.3f", hoodt.getServo().getPosition());
-            telemetry.addData("Camera Localized Pos","x: %.2f y: %.2f heading: %.2f",follower.getPose().getX(),follower.getPose().getY(),Math.toDegrees(follower.getHeading()));
+            telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.update();
-            //endregion
-
-            //hmmmm
-            sleep(10);
         }
     }
 
-    //HELPER METHODS
+
+    //region HELPER METHODS
     public void moveRobot(double x, double y, double yaw) {
         // Calculate wheel powers.
         double frontLeftPower    =  x - y - yaw;
@@ -591,11 +617,22 @@ public class MainRedOpMode extends LinearOpMode
     }
 
     private void updateCarouselPID(double targetAngle, double dt) {
+        double ccwOffset = -6.0;
         // read angles 0..360
-        double angle = mapVoltageToAngle360(spinAnalog.getVoltage(), 0.01, 3.29);
+        double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
 
+        //raw error
+        double rawError = -angleError(targetAngle, angle);
+
+        //adds a constant term if it's in a certain direction.
+        // we either do this or we change the pid values for each direction.
+        // gonna try and see if simpler method works tho
+        double compensatedTarget = targetAngle;
+        if (rawError < 0) { // moving CCW
+            compensatedTarget = (targetAngle + ccwOffset) % 360.0;
+        }
         // compute shortest signed error [-180,180]
-        double error = -angleError(targetAngle, angle);
+        double error = -angleError(compensatedTarget, angle);
 
         // integral with anti-windup
         integral += error * dt;
@@ -621,103 +658,100 @@ public class MainRedOpMode extends LinearOpMode
         }
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
-        spin.setPower(out);
+        spin1.setPower(out);
+        spin2.setPower(out);
 
         // store errors for next derivative calculation
         lastError = error;
 
         // telemetry for PID (keeps concise, add more if you want)
         telemetry.addData("Carousel Target", "%.1f°", targetAngle);
-        telemetry.addData("SPIN VALS", "angle=%.2f, err=%.2f, pwr=%.2f", angle, error, out);
 
     }
 
-    private void initAprilTag() {
+    private void updateHoodPID(double targetAngle, double dt) {
+        // Read hood angle from encoder (0..360)
+        double angle = mapVoltageToAngle360(hoodEncoder.getVoltage(), 0.01, 3.29);
 
-        // Create the AprilTag processor.
-        aprilTag = new AprilTagProcessor.Builder()
+        // Compute shortest signed error [-180,180]
+        double error = -angleError(targetAngle, angle);
 
-                // The following default settings are available to un-comment and edit as needed.
-                //.setDrawAxes(false)
-                //.setDrawCubeProjection(false)
-                .setDrawTagOutline(true)
-                //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
-                .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary())
-                .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
-                .setLensIntrinsics(904.848699568, 904.848699568, 658.131998572, 340.91602987)
-                // == CAMERA CALIBRATION ==
-                // If you do not manually specify calibration parameters, the SDK will attempt
-                // to load a predefined calibration for your camera.
+        // Integral with anti-windup
+        hoodIntegral += error * dt;
+        hoodIntegral = clamp(hoodIntegral, -hoodIntegralLimit, hoodIntegralLimit);
 
-                .build();
+        // Derivative
+        double d = (error - hoodLastError) / Math.max(dt, 1e-6);
 
-        // Adjust Image Decimation to trade-off detection-range for detection-rate.
-        // eg: Some typical detection data using a Logitech C920 WebCam
-        // Decimation = 1 ..  Detect 2" Tag from 10 feet away at 10 Frames per second
-        // Decimation = 2 ..  Detect 2" Tag from 6  feet away at 22 Frames per second
-        // Decimation = 3 ..  Detect 2" Tag from 4  feet away at 30 Frames Per Second (default)
-        // Decimation = 3 ..  Detect 5" Tag from 10 feet away at 30 Frames Per Second (default)
-        // Note: Decimation can be changed on-the-fly to adapt during a match.
-        aprilTag.setDecimation(4);
+        // PIDF output
+        double out = hoodKp * error + hoodKi * hoodIntegral + hoodKd * d;
 
-        // Create the vision portal by using a builder.
-        visionPortal = new VisionPortal.Builder()
-                .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
-                .addProcessor(aprilTag)
-                .setCameraResolution(new Size(1280, 720))
-                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
-                .build();
-    }
-
-    private void setManualExposure(int exposureMS, int gain) {
-        // Wait for the camera to be open, then use the controls
-
-        if (visionPortal == null) {
-            return;
+        // Feedforward to overcome stiction
+        if (Math.abs(error) > 1.0) {
+            out += hoodKf * Math.signum(error);
         }
 
-        // Make sure camera is streaming before we try to set the exposure controls
-        if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
-            telemetry.addData("Camera", "Waiting");
-            telemetry.update();
-            while (!isStopRequested() && (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING)) {
-                sleep(20);
+        // Clamp to [-1,1] and apply deadband
+        out = Range.clip(out, -1.0, 1.0);
+        if (Math.abs(out) < hoodOutputDeadband) out = 0.0;
+
+        // If within tolerance, zero output and decay integrator
+        if (Math.abs(error) <= hoodToleranceDeg) {
+            out = 0.0;
+            hoodIntegral *= 0.2;
+        }
+
+        // Apply power to hood servo
+        hood.setPower(out);
+
+        // Store error for next iteration
+        hoodLastError = error;
+
+        // Telemetry
+        telemetry.addData("Hood Target", "%.1f°", targetAngle);
+        telemetry.addData("Hood Actual", "%.1f°", angle);
+        telemetry.addData("Hood Error", "%.1f°", error);
+        telemetry.addData("Hood Power", "%.3f", out);
+    }
+
+    private void spinBallLED(){
+        if(carouselIndex % 2 == 1){
+            int ballIndex=0;
+//                int ballIndex = 0.375*(carouselIndex*carouselIndex)-2.5*carouselIndex+4.125;
+            if(carouselIndex==1) ballIndex=2;
+            else if(carouselIndex==3) ballIndex=0;
+            else if(carouselIndex==5) ballIndex=1;
+
+            if(savedBalls[ballIndex]=='p') {
+                gamepad1.setLedColor(128,0,128,2000); //purple
+                gamepad2.setLedColor(128,0,128,2000); //purple
             }
-            telemetry.addData("Camera", "Ready");
-            telemetry.update();
-        }
-
-        // Set camera controls unless we are stopping.
-        if (!isStopRequested())
-        {
-            ExposureControl exposureControl = visionPortal.getCameraControl(ExposureControl.class);
-            if (exposureControl.getMode() != ExposureControl.Mode.Manual) {
-                exposureControl.setMode(ExposureControl.Mode.Manual);
-                sleep(50);
+            else if(savedBalls[ballIndex]=='g') {
+                gamepad1.setLedColor(0,128,0,2000); //green
+                gamepad2.setLedColor(0,128,0,2000); //green
             }
-            exposureControl.setExposure((long)exposureMS, TimeUnit.MILLISECONDS);
-            sleep(20);
-            GainControl gainControl = visionPortal.getCameraControl(GainControl.class);
-            gainControl.setGain(gain);
-            sleep(20);
+            else {
+                gamepad1.setLedColor(255,255,255,2000); //white
+                gamepad2.setLedColor(255,255,255,2000); //white
+            }
         }
     }
 
-    private void adjustDecimation(double range) {
-        int newDecimation;
+    private char getDetectedColor(){
+        NormalizedRGBA colors = color.getNormalizedColors();
+        float nRed = colors.red/colors.alpha;
+        float nGreen = colors.green/colors.alpha;
+        float nBlue = colors.blue/colors.alpha;
 
-        if (range > 90) {
-            newDecimation = 3;
-        } else if (range > 50) {
-            newDecimation = 3;
-        } else {
-            newDecimation = 4;
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
         }
-
-        aprilTag.setDecimation(newDecimation);
-        telemetry.addData("Decimation: ", "%d", newDecimation);
-
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
+            return 'g';
+        }
+        return 'n';
     }
+
     private double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -734,4 +768,5 @@ public class MainRedOpMode extends LinearOpMode
         if (error < -180) error += 360;
         return error;
     }
+    //endregion
 }

@@ -91,7 +91,7 @@ public class MainBlueOpMode extends LinearOpMode
     //region VISION SYSTEM
 // AprilTag Configuration
     private LLResultTypes.FiducialResult desiredTag;
-    private static final int DESIRED_TAG_ID = 24; //blue id is 20, red is 24
+    private static final int DESIRED_TAG_ID = 20; //blue id is 20, red is 24
 
     // Tracking State
     private boolean facingGoal = false; //used for tracking
