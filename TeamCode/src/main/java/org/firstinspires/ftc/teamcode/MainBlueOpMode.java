@@ -164,6 +164,7 @@ public class MainBlueOpMode extends LinearOpMode
     // 57, 177, and 297 face the intake; others face the transfer
     private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
     private int carouselIndex = 0;
+    private int prevCarouselIndex = 0;
 
     // Ball Storage Tracking
     // 'n' = none (empty), 'p' = purple, 'g' = green
@@ -440,22 +441,26 @@ public class MainBlueOpMode extends LinearOpMode
             // Carousel Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
             if (gamepad2.dpadLeftWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
                 carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             if (gamepad2.dpadRightWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
                 carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             //Down and Up go to transfer positions, aka the even numbered indices on the pos array
             if (gamepad2.dpadUpWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
                 carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             if (gamepad2.dpadDownWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
                 carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
@@ -475,7 +480,7 @@ public class MainBlueOpMode extends LinearOpMode
             if (carouselIndex == 4) savedBalls[2] = detectedColor;
 
             // Clear ball positions when transferring
-            if (tranOn) {
+            if (tranOn && flyOn) {
                 if (carouselIndex == 1) savedBalls[2] = 0;
                 if (carouselIndex == 3) savedBalls[0] = 0;
                 if (carouselIndex == 5) savedBalls[1] = 0;
@@ -715,12 +720,14 @@ public class MainBlueOpMode extends LinearOpMode
     }
 
     private void spinBallLED(){
-        if(carouselIndex % 2 == 1){
-            int ballIndex=0;
+        if(carouselIndex % 2 == 0){
+            int avgIndex = (carouselIndex + prevCarouselIndex)/ 2;
+            if (avgIndex == 2) avgIndex = 5;
+            int ballIndex = 0;
 //                int ballIndex = 0.375*(carouselIndex*carouselIndex)-2.5*carouselIndex+4.125;
-            if(carouselIndex==1) ballIndex=2;
-            else if(carouselIndex==3) ballIndex=0;
-            else if(carouselIndex==5) ballIndex=1;
+            if(avgIndex==1) ballIndex=2;
+            else if(avgIndex==3) ballIndex=0;
+            else if(avgIndex==5) ballIndex=1;
 
             if(savedBalls[ballIndex]=='p') {
                 gamepad1.setLedColor(128,0,128,2000); //purple

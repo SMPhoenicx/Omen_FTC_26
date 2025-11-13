@@ -164,6 +164,7 @@ public class MainRedOpMode extends LinearOpMode
     // 57, 177, and 297 face the intake; others face the transfer
     private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
     private int carouselIndex = 0;
+    private int prevCarouselIndex = 0;
 
     // Ball Storage Tracking
     // 'n' = none (empty), 'p' = purple, 'g' = green
@@ -299,23 +300,21 @@ public class MainRedOpMode extends LinearOpMode
                 double y = targetPose.getPosition().y;
                 double z = targetPose.getPosition().z;
 
-                Pose3D robotPose = desiredTag.getRobotPoseTargetSpace(); //gets position of tag relative to robot
+                Pose3D robotPose = desiredTag.getRobotPoseFieldSpace(); //gets position of tag relative to robot
                 double robotX = robotPose.getPosition().x;
                 double robotY = robotPose.getPosition().y;
                 double robotZ = robotPose.getPosition().z;
 
-                if (robotX < -0.3) {
+                if (robotX < -0.15) {
                     txOffset = -5;
                 }
-                else if (robotX > 0.1) {
-                    if(robotX > 0.6) {
-                        txOffset = 8;
-                    }
-                    else {
-                        txOffset = 6;
-                    }
+                else if (robotX > 0.2 && robotX < 0.55) {
+                    txOffset = 8;
                 }
-                else {
+                else if (robotX > 0.55) {
+                    txOffset = 13;
+                }
+                else if (robotX == 0){
                     txOffset = 0;
                 }
 
@@ -324,7 +323,7 @@ public class MainRedOpMode extends LinearOpMode
                 double slantRange = distMeters * 39.3701; //in inches
 
 
-                flyKiOffset = slantRange > 65 ? 0:0.12;
+                flyKiOffset = slantRange > 65 ? 0:0.08;
 
                 double range = z *39.3701;
                 flySpeed = 9.11 * slantRange + 880;
@@ -445,22 +444,26 @@ public class MainRedOpMode extends LinearOpMode
             // Carousel Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
             if (gamepad2.dpadLeftWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
                 carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             if (gamepad2.dpadRightWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
                 carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             //Down and Up go to transfer positions, aka the even numbered indices on the pos array
             if (gamepad2.dpadUpWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
                 carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
             }
             if (gamepad2.dpadDownWasPressed()) {
+                prevCarouselIndex = carouselIndex;
                 carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
                 carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
                 spinBallLED();
@@ -480,7 +483,7 @@ public class MainRedOpMode extends LinearOpMode
             if (carouselIndex == 4) savedBalls[2] = detectedColor;
 
             // Clear ball positions when transferring
-            if (tranOn) {
+            if (tranOn && flyOn) {
                 if (carouselIndex == 1) savedBalls[2] = 0;
                 if (carouselIndex == 3) savedBalls[0] = 0;
                 if (carouselIndex == 5) savedBalls[1] = 0;
@@ -496,16 +499,6 @@ public class MainRedOpMode extends LinearOpMode
 
             if (facingGoal) {
                 if (targetFound && desiredTag != null) {
-                    // Live tracking
-                    Pose3D targetPose = desiredTag.getTargetPoseRobotSpace(); //gets position of tag relative to robot
-                    double x = targetPose.getPosition().x;
-                    double y = targetPose.getPosition().y;
-                    double z = targetPose.getPosition().z;
-
-                    // Calculate distances
-                    double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
-                    double slantRange = round(distMeters * 39.3701 / 5.0) * 5.0; //in inches
-
                     double txRaw = desiredTag.getTargetXDegrees();
                     double tx = desiredTag.getTargetXDegrees()+txOffset;
                     //save for smoothing
@@ -720,12 +713,16 @@ public class MainRedOpMode extends LinearOpMode
     }
 
     private void spinBallLED(){
-        if(carouselIndex % 2 == 1){
-            int ballIndex=0;
+        if(carouselIndex % 2 == 0){
+            int avgIndex = (carouselIndex + prevCarouselIndex)/ 2;
+            if (avgIndex == 2) avgIndex = 5;
+            int ballIndex = 0;
 //                int ballIndex = 0.375*(carouselIndex*carouselIndex)-2.5*carouselIndex+4.125;
-            if(carouselIndex==1) ballIndex=2;
-            else if(carouselIndex==3) ballIndex=0;
-            else if(carouselIndex==5) ballIndex=1;
+            if(avgIndex==1) ballIndex=2;
+            else if(avgIndex==3) ballIndex=0;
+            else if(avgIndex==5) ballIndex=1;
+
+            ballIndex = (ballIndex - 1 + 3) % 3;
 
             if(savedBalls[ballIndex]=='p') {
                 gamepad1.setLedColor(128,0,128,2000); //purple
