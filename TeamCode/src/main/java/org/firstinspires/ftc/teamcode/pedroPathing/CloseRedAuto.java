@@ -14,18 +14,15 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.teamcode.ToggleServo;
-
 import java.util.List;
 
-@Autonomous(name="Close Red Auto", group="Robot")//Copy of IdkSmthAuto except the pickup path is split into two paths
+@Autonomous(name="Close Red Auto", group="Robot")
 public class CloseRedAuto extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
@@ -68,7 +65,7 @@ public class CloseRedAuto extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 0.7;
+    double flyKi = 1.0;
     double flyKd = 3.0;
     double flyKiOffset = 0.0;
     //endregion
@@ -382,23 +379,25 @@ public class CloseRedAuto extends LinearOpMode {
                         if(shootingState==0){
                             double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
                             if(avgSpeed < flySpeedTarget * 0.94) break;
-                            int greenIn=0;
+                            int greenIn=-1;
                             for(int i=0;i<3;i++){
                                 if(savedBalls[i]=='g'){
-                                    if(i==0){
-                                        greenIn=0;//3;
-                                    }else if(i==1){
-                                        greenIn=1;//5;
-                                    }else{//i==2 + else
-                                        greenIn=2;//1;
-                                    }
+                                    greenIn=i;
                                 }
                             }
-                            int diff = (greenIn - greenPos) % 3;
+//                            if(greenIn==-1){
+//                                for(int i=0;i<3;i++){
+//                                    if(savedBalls[i]=='n'){
+//                                        greenIn=i;
+//                                    }
+//                                }
+//                            }
+                            if(greenIn==-1) greenIn=0;
+
+                            int diff = (greenIn + greenPos) % 3;
                             if(diff==0) carouselIndex=4;
-                            else if(diff==1) carouselIndex=2;
-                            else carouselIndex=0;
-//                            carouselIndex+=1;
+                            else if(diff==1) carouselIndex=0;
+                            else carouselIndex=2;
                             timeout=runtime.milliseconds()+500;
                             shootingState++;
                         }
