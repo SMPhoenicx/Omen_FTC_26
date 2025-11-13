@@ -55,7 +55,7 @@ import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 import java.util.List;
 
-@TeleOp(name="MainRedeOpMode", group = "A")
+@TeleOp(name="MainRedOpMode", group = "A")
 public class MainRedOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
@@ -115,7 +115,7 @@ public class MainRedOpMode extends LinearOpMode
     // Flywheel PID Constants
     double flyKp = 9.0;
     double flyKi = 1.0;
-    double flyKd = 3.0;
+    double flyKd = 3.2;
     double flyKiOffset = 0.0;
     //endregion
 
@@ -304,11 +304,16 @@ public class MainRedOpMode extends LinearOpMode
                 double robotY = robotPose.getPosition().y;
                 double robotZ = robotPose.getPosition().z;
 
-                if (robotX < -0.15) {
-                    txOffset = 5;
-                }
-                else if (robotX > 0.3) {
+                if (robotX < -0.3) {
                     txOffset = -5;
+                }
+                else if (robotX > 0.1) {
+                    if(robotX > 0.6) {
+                        txOffset = 8;
+                    }
+                    else {
+                        txOffset = 6;
+                    }
                 }
                 else {
                     txOffset = 0;

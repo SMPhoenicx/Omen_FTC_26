@@ -115,7 +115,7 @@ public class MainBlueOpMode extends LinearOpMode
     // Flywheel PID Constants
     double flyKp = 9.0;
     double flyKi = 1.0;
-    double flyKd = 3.0;
+    double flyKd = 3.2;
     double flyKiOffset = 0.0;
     //endregion
 
@@ -305,10 +305,10 @@ public class MainBlueOpMode extends LinearOpMode
                 double robotZ = robotPose.getPosition().z;
 
                 if (robotX < -0.15) {
-                    txOffset = 5;
+                    txOffset = -5;
                 }
                 else if (robotX > 0.3) {
-                    txOffset = -5;
+                    txOffset = 5;
                 }
                 else {
                     txOffset = 0;
