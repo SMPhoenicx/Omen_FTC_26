@@ -305,7 +305,7 @@ public class MainRedOpMode extends LinearOpMode
                 double robotY = robotPose.getPosition().y;
                 double robotZ = robotPose.getPosition().z;
 
-                if (robotX < 0.15) {
+                if (robotX < -1) {
                     txOffset = -5;
                 }
                 else if (robotX > 0.35) {
@@ -314,7 +314,7 @@ public class MainRedOpMode extends LinearOpMode
 
                 // Calculate distances
                 double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
-                double slantRange = distMeters * 39.3701 * (104.1 / 165.1); //in inches
+                double slantRange = distMeters * 39.3701 * (114.3 / 165.1); //in inches
 
 
                 flyKiOffset = slantRange > 65 ? 0:0.08;

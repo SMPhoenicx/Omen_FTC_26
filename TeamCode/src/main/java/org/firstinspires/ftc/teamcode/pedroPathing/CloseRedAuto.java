@@ -312,13 +312,13 @@ public class CloseRedAuto extends LinearOpMode {
                         pathState++;
                         break;
                     case 5:
-                        flySpeed = flySpeedTarget;
                         follower.followPath(pickupPath1[1],0.2,true);
                         pathState++;
                         break;
                     //CASE 6 is intaking
                     case 7:
                         follower.followPath(scorePath1,true);
+                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;
@@ -335,13 +335,13 @@ public class CloseRedAuto extends LinearOpMode {
                         pathState++;
                         break;
                     case 10:
-                        flySpeed = flySpeedTarget;
                         follower.followPath(pickupPath2[1],0.2,true);
                         pathState++;
                         break;
                     //CASE 11 is intaking
                     case 12:
                         follower.followPath(scorePath2,true);
+                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;
@@ -380,7 +380,7 @@ public class CloseRedAuto extends LinearOpMode {
                         intake.setPower(0);
                         if(shootingState==0){
                             double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-                            if(avgSpeed < flySpeedTarget * 0.94) break;
+                            if(avgSpeed < flySpeedTarget * 0.94 || avgSpeed > flySpeedTarget * 1.05) break;
                             int greenIn=-1;
                             for(int i=0;i<3;i++){
                                 if(savedBalls[i]=='g'){
