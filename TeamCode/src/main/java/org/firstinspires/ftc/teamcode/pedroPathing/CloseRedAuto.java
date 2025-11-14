@@ -65,8 +65,8 @@ public class CloseRedAuto extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.0;
-    double flyKd = 3.0;
+    double flyKi = 1.005;
+    double flyKd = 3.2;
     double flyKiOffset = 0.0;
     //endregion
 
@@ -90,7 +90,7 @@ public class CloseRedAuto extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -11.8;
+    private double hoodAngle = -22.8;
     private double hoodOffset = 0;
     //endregion
 
@@ -216,7 +216,7 @@ public class CloseRedAuto extends LinearOpMode {
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
-        int flySpeedTarget = 1241;
+        int flySpeedTarget = 1218;
         //endregion
 
         //region HARDWARE INFO
@@ -304,13 +304,14 @@ public class CloseRedAuto extends LinearOpMode {
 
                     //region CYCLE ONE
                     case 4:
-                        flySpeed = flySpeedTarget;
+                        flySpeed = 0;
                         transOn=false;
                         intake.setPower(1);
                         follower.followPath(pickupPath1[0],true);
                         pathState++;
                         break;
                     case 5:
+                        flySpeed = flySpeedTarget;
                         follower.followPath(pickupPath1[1],0.2,true);
                         pathState++;
                         break;
@@ -333,13 +334,13 @@ public class CloseRedAuto extends LinearOpMode {
                         pathState++;
                         break;
                     case 10:
+                        flySpeed = flySpeedTarget;
                         follower.followPath(pickupPath2[1],0.2,true);
                         pathState++;
                         break;
                     //CASE 11 is intaking
                     case 12:
                         follower.followPath(scorePath2,true);
-                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;
