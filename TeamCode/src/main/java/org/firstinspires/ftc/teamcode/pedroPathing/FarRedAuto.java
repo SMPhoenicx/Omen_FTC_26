@@ -65,7 +65,7 @@ public class FarRedAuto extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.15;
+    double flyKi = 1.8;
     double flyKd = 2.9;
     double flyKiOffset = 0.0;
     //endregion
@@ -90,7 +90,7 @@ public class FarRedAuto extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -154;
+    private double hoodAngle = -190;
     private double hoodOffset = 0;
     //endregion
 
@@ -144,7 +144,7 @@ public class FarRedAuto extends LinearOpMode {
     public void createPaths(){
         scorePath0 = follower.pathBuilder()
                 .addPath(new BezierLine(startPose,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(138,144))
                 .build();
         pickupPath1[0] = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,pickup1[0]))
@@ -183,19 +183,19 @@ public class FarRedAuto extends LinearOpMode {
                 .addPath(new BezierLine(pickup1[1],pickup1[2]))
                 .setLinearHeadingInterpolation(pickup1[1].getHeading(),pickup1[2].getHeading())
                 .addPath(new BezierLine(pickup1[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(138,144))
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2[1],pickup2[2]))
                 .setLinearHeadingInterpolation(pickup2[1].getHeading(),pickup2[2].getHeading())
                 .addPath(new BezierLine(pickup2[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(136,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(138,144))
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3[1],pickup3[2]))
                 .setLinearHeadingInterpolation(pickup3[1].getHeading(),pickup3[2].getHeading())
                 .addPath(new BezierLine(pickup3[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(140,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(138,144))
                 .build();
         moveScore = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,movePoint))
@@ -211,7 +211,7 @@ public class FarRedAuto extends LinearOpMode {
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
-        int flySpeedTarget = 1595;
+        int flySpeedTarget = 1590;
         //endregion
 
         //region HARDWARE INFO
@@ -285,7 +285,8 @@ public class FarRedAuto extends LinearOpMode {
                     //region CYCLE ZERO (READ MOTIF)
                     case 0:
                         pathState++;
-                        flySpeed = flySpeedTarget;
+                        flySpeed = flySpeedTarget-55;
+                        flyKi += 0.3;
                         timeout = runtime.milliseconds()+1000;
                         break;
                     //CASE 1 is reading motif
@@ -299,7 +300,7 @@ public class FarRedAuto extends LinearOpMode {
 
                     //region CYCLE ONE
                     case 4:
-                        flySpeed = flySpeedTarget;
+                        flySpeed = 0;
                         transOn=false;
                         intake.setPower(1);
                         follower.followPath(pickupPath3[0],true);
@@ -312,6 +313,7 @@ public class FarRedAuto extends LinearOpMode {
                     //CASE 6 is intaking
                     case 7:
                         follower.followPath(scorePath3,true);
+                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;

@@ -65,8 +65,8 @@ public class CloseBlueAuto extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.005;
-    double flyKd = 3.2;
+    double flyKi = 1.5;
+    double flyKd = 3.0;
     double flyKiOffset = 0.0;
     //endregion
 
@@ -90,7 +90,7 @@ public class CloseBlueAuto extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -11.8;
+    private double hoodAngle = -48.1;
     private double hoodOffset = 0;
     //endregion
 
@@ -128,15 +128,15 @@ public class CloseBlueAuto extends LinearOpMode {
 
         pickup1[0] = new Pose(144-94,82.5,Math.toRadians(180));
         pickup1[1] = new Pose(144-123,82.5,Math.toRadians(180));
-        pickup1[2] = new Pose(144-120,82.5,Math.toRadians(180-45));
+        pickup1[2] = new Pose(144-123,85,Math.toRadians(180-45));
 
         pickup2[0] = new Pose(144-94,58,Math.toRadians(180));
         pickup2[1] = new Pose(144-126,58,Math.toRadians(180));
-        pickup2[2] = new Pose(144-116,56,Math.toRadians(180-45));
+        pickup2[2] = new Pose(144-116,57,Math.toRadians(180-45));
 
         pickup3[0] = new Pose(144-94,33,Math.toRadians(180));
         pickup3[1] = new Pose(144-126,33,Math.toRadians(180));
-        pickup3[2] = new Pose(144-116,31,Math.toRadians(180-45));
+        pickup3[2] = new Pose(144-116,32,Math.toRadians(180-45));
 
         shoot1 = new Pose(144-90,90,Math.toRadians(180-45));
         movePoint = new Pose(144-114,77,Math.toRadians(180-45));
@@ -145,11 +145,11 @@ public class CloseBlueAuto extends LinearOpMode {
     public void createPaths(){
         obeliskPath = follower.pathBuilder()
                 .addPath(new BezierLine(startPose,obelisk))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(72,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144-72,144))
                 .build();
         scorePath0 = follower.pathBuilder()
                 .addPath(new BezierLine(obelisk,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(0,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
                 .build();
         pickupPath1[0] = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,pickup1[0]))
@@ -188,19 +188,19 @@ public class CloseBlueAuto extends LinearOpMode {
                 .addPath(new BezierLine(pickup1[1],pickup1[2]))
                 .setLinearHeadingInterpolation(pickup1[1].getHeading(),pickup1[2].getHeading())
                 .addPath(new BezierLine(pickup1[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(0,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2[1],pickup2[2]))
                 .setLinearHeadingInterpolation(pickup2[1].getHeading(),pickup2[2].getHeading())
                 .addPath(new BezierLine(pickup2[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(0,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3[1],pickup3[2]))
                 .setLinearHeadingInterpolation(pickup3[1].getHeading(),pickup3[2].getHeading())
                 .addPath(new BezierLine(pickup3[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(0,144))
+                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
                 .build();
         moveScore = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,movePoint))
@@ -212,11 +212,11 @@ public class CloseBlueAuto extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         //region MAIN VARS
         int pathState = 0;
-        int shootingState = 4;
+        int shootingState = 5;
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
-        int flySpeedTarget = 1218;
+        int flySpeedTarget = 1198;
         //endregion
 
         //region HARDWARE INFO
@@ -291,7 +291,9 @@ public class CloseBlueAuto extends LinearOpMode {
                     case 0:
                         follower.followPath(obeliskPath,false);
                         pathState++;
-                        flySpeed = flySpeedTarget;
+                        flySpeed = flySpeedTarget-55;
+                        flyKi += 0.3;
+                        timeout = runtime.milliseconds()+500;
                         break;
                     //CASE 1 is reading motif
                     case 2:
@@ -305,19 +307,20 @@ public class CloseBlueAuto extends LinearOpMode {
                     //region CYCLE ONE
                     case 4:
                         flySpeed = 0;
+                        flyKi -= 0.3;
                         transOn=false;
                         intake.setPower(1);
                         follower.followPath(pickupPath1[0],true);
                         pathState++;
                         break;
                     case 5:
-                        flySpeed = flySpeedTarget;
                         follower.followPath(pickupPath1[1],0.2,true);
                         pathState++;
                         break;
                     //CASE 6 is intaking
                     case 7:
                         follower.followPath(scorePath1,true);
+                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;
@@ -334,13 +337,13 @@ public class CloseBlueAuto extends LinearOpMode {
                         pathState++;
                         break;
                     case 10:
-                        flySpeed = flySpeedTarget;
                         follower.followPath(pickupPath2[1],0.2,true);
                         pathState++;
                         break;
                     //CASE 11 is intaking
                     case 12:
                         follower.followPath(scorePath2,true);
+                        flySpeed = flySpeedTarget;
                         transOn = true;
                         pathState++;
                         shootingState=0;
@@ -379,27 +382,27 @@ public class CloseBlueAuto extends LinearOpMode {
                         intake.setPower(0);
                         if(shootingState==0){
                             double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-                            if(avgSpeed < flySpeedTarget * 0.94) break;
+                            if(avgSpeed < flySpeedTarget * 0.94 || avgSpeed > flySpeedTarget * 1.08) break;
                             int greenIn=-1;
                             for(int i=0;i<3;i++){
                                 if(savedBalls[i]=='g'){
                                     greenIn=i;
                                 }
                             }
-//                            if(greenIn==-1){
-//                                for(int i=0;i<3;i++){
-//                                    if(savedBalls[i]=='n'){
-//                                        greenIn=i;
-//                                    }
-//                                }
-//                            }
+                            if(greenIn==-1){
+                                for(int i=0;i<3;i++){
+                                    if(savedBalls[i]=='n'){
+                                        greenIn=i;
+                                    }
+                                }
+                            }
                             if(greenIn==-1) greenIn=0;
 
                             int diff = (greenIn + greenPos) % 3;
                             if(diff==0) carouselIndex=4;
                             else if(diff==1) carouselIndex=0;
                             else carouselIndex=2;
-                            timeout=runtime.milliseconds()+500;
+                            timeout=runtime.milliseconds()+1000;
                             shootingState++;
                         }
                         else if(shootingState==1){
@@ -424,7 +427,7 @@ public class CloseBlueAuto extends LinearOpMode {
                         break;
 
                     //end of auto
-                    case 20:
+                    case 19:
                         transOn=false;
                         follower.followPath(moveScore);
                         pathState++;
@@ -475,7 +478,7 @@ public class CloseBlueAuto extends LinearOpMode {
             //endregion
 
             //region READ MOTIF
-            if(pathState==1){
+            if(pathState==1&&timeout<runtime.milliseconds()){
                 int april = readMotif();
                 if(april!=-1) {
                     if (april == 21) {
@@ -645,14 +648,18 @@ public class CloseBlueAuto extends LinearOpMode {
 
     private int readMotif(){
         LLResult result = limelight.getLatestResult();
+        int numTags = 0;
+        int lastTagIndex = 0;
         if (result != null && result.isValid()) {
             List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
             for (LLResultTypes.FiducialResult fiducial : fiducials) {
                 if (fiducial.getFiducialId() == 21||fiducial.getFiducialId() == 22||fiducial.getFiducialId() == 23) {
-                    return fiducial.getFiducialId();
+                    numTags++;
                 }
             }
-
+            if(numTags==1){
+                return fiducials.get(lastTagIndex).getFiducialId();
+            }
         }
         return -1;
     }

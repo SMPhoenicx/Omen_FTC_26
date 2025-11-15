@@ -114,7 +114,7 @@ public class MainBlueOpMode extends LinearOpMode
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.0;
+    double flyKi = 0.945;
     double flyKd = 3.2;
     double flyKiOffset = 0.0;
     //endregion
@@ -177,6 +177,17 @@ public class MainBlueOpMode extends LinearOpMode
     Pose endgamePose = new Pose(103, 37.5, Math.toRadians(90));
     //endregion
 
+    //region TELE EXTRA VARS
+    private static final double[] RANGE_SAMPLES = {31, 36, 41, 46, 51, 71.5, 78, 85, 90, 93};
+    private static final double[] FLY_SPEEDS = {1220, 1255, 1300, 1340, 1390, 1560, 1590, 1630, 1670, 1700};
+    private static final double[] HOOD_ANGLES = {-6, -33, -40, -50, -80, -140, -180, -200, -187, -177};
+
+    private double smoothedRange = 0;
+    private double smoothedTx = 0;
+    private boolean isInitialized = false;
+
+    private static final double ALPHA = 0.9;
+    //endregion
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -300,34 +311,42 @@ public class MainBlueOpMode extends LinearOpMode
                 double y = targetPose.getPosition().y;
                 double z = targetPose.getPosition().z;
 
-                Pose3D robotPose = desiredTag.getRobotPoseTargetSpace(); //gets position of tag relative to robot
+                Pose3D robotPose = desiredTag.getRobotPoseFieldSpace(); //gets position of tag relative to robot
                 double robotX = robotPose.getPosition().x;
                 double robotY = robotPose.getPosition().y;
                 double robotZ = robotPose.getPosition().z;
 
-                if (robotX < -0.15) {
+                if (robotX > -0.6 && robotX < 0.6) {
+                    txOffset = -4;
+                }
+                else if (robotX < 0.6) {
                     txOffset = -5;
-                }
-                else if (robotX > 0.3) {
-                    txOffset = 5;
-                }
-                else {
-                    txOffset = 0;
                 }
 
                 // Calculate distances
                 double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
-                double slantRange = distMeters * 39.3701; //in inches
+                double slantRange = Math.round(distMeters * 39.3701 * (114.3 / 165.1)); //in inches
 
+                if (!isInitialized) {
+                    smoothedRange = slantRange;
+                    smoothedTx = tx;
+                    isInitialized = true;
+                } else {
+                    // Smooth the readings
+                    smoothedRange = smooth(slantRange, smoothedRange);
+                    smoothedTx = smooth(tx, smoothedTx);
+                }
 
-                flyKiOffset = slantRange > 65 ? 0:0.12;
+                if (smoothedRange > 70) {
+                    flyKiOffset = 0.45;
+                }
 
                 double range = z *39.3701;
-                flySpeed = 9.11 * slantRange + 880;
-                hoodAngle = -3.67 * slantRange + 130;
-
+                flySpeed = interpolate(smoothedRange, RANGE_SAMPLES, FLY_SPEEDS);
+                hoodAngle = interpolate(smoothedRange, RANGE_SAMPLES, HOOD_ANGLES);
+                hoodAngle = hoodAngle < -190 ? -190:hoodAngle;
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
-                telemetry.addData("Distance", "%.1f inches", slantRange);
+                telemetry.addData("Distance", "%.1f inches", smoothedRange);
                 telemetry.addData("Range", "%.1f inches", range);
                 telemetry.addData("X val", robotX);
                 telemetry.addData("Y val", robotY);
@@ -496,16 +515,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             if (facingGoal) {
                 if (targetFound && desiredTag != null) {
-                    // Live tracking
-                    Pose3D targetPose = desiredTag.getTargetPoseRobotSpace(); //gets position of tag relative to robot
-                    double x = targetPose.getPosition().x;
-                    double y = targetPose.getPosition().y;
-                    double z = targetPose.getPosition().z;
-
-                    // Calculate distances
-                    double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
-                    double slantRange = round(distMeters * 39.3701 / 5.0) * 5.0; //in inches
-
                     double txRaw = desiredTag.getTargetXDegrees();
                     double tx = desiredTag.getTargetXDegrees()+txOffset;
                     //save for smoothing
@@ -729,6 +738,8 @@ public class MainBlueOpMode extends LinearOpMode
             else if(avgIndex==3) ballIndex=0;
             else if(avgIndex==5) ballIndex=1;
 
+            ballIndex = (ballIndex - 1 + 3) % 3;
+
             if(savedBalls[ballIndex]=='p') {
                 gamepad1.setLedColor(128,0,128,2000); //purple
                 gamepad2.setLedColor(128,0,128,2000); //purple
@@ -774,6 +785,27 @@ public class MainBlueOpMode extends LinearOpMode
         if (error > 180) error -= 360;
         if (error < -180) error += 360;
         return error;
+    }
+
+    // Linear interpolation helper method
+    private double interpolate(double x, double[] xValues, double[] yValues) {
+        // Clamp to table bounds
+        if (x <= xValues[0]) return yValues[0];
+        if (x >= xValues[xValues.length - 1]) return yValues[yValues.length - 1];
+
+        // Find surrounding points
+        for (int i = 0; i < xValues.length - 1; i++) {
+            if (x >= xValues[i] && x <= xValues[i + 1]) {
+                // Linear interpolation formula
+                double t = (x - xValues[i]) / (xValues[i + 1] - xValues[i]);
+                return yValues[i] + t * (yValues[i + 1] - yValues[i]);
+            }
+        }
+        return yValues[yValues.length - 1]; // fallback
+    }
+
+    private double smooth(double newValue, double previousValue) {
+        return ALPHA * newValue + (1 - ALPHA) * previousValue;
     }
     //endregion
 }

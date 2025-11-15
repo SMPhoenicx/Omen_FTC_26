@@ -65,8 +65,8 @@ public class CloseRedAuto extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.005;
-    double flyKd = 3.2;
+    double flyKi = 1.4;
+    double flyKd = 3.0;
     double flyKiOffset = 0.0;
     //endregion
 
@@ -90,7 +90,7 @@ public class CloseRedAuto extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -22.8;
+    private double hoodAngle = -48.1;
     private double hoodOffset = 0;
     //endregion
 
@@ -216,7 +216,7 @@ public class CloseRedAuto extends LinearOpMode {
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
-        int flySpeedTarget = 1218;
+        int flySpeedTarget = 1208;
         //endregion
 
         //region HARDWARE INFO
@@ -291,7 +291,7 @@ public class CloseRedAuto extends LinearOpMode {
                     case 0:
                         follower.followPath(obeliskPath,false);
                         pathState++;
-                        flySpeed = flySpeedTarget;
+                        flySpeed = flySpeedTarget-28;
                         timeout = runtime.milliseconds()+500;
                         break;
                     //CASE 1 is reading motif
@@ -380,7 +380,7 @@ public class CloseRedAuto extends LinearOpMode {
                         intake.setPower(0);
                         if(shootingState==0){
                             double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-                            if(avgSpeed < flySpeedTarget * 0.94 || avgSpeed > flySpeedTarget * 1.05) break;
+                            if(avgSpeed < flySpeedTarget * 0.94) break;
                             int greenIn=-1;
                             for(int i=0;i<3;i++){
                                 if(savedBalls[i]=='g'){
@@ -400,7 +400,7 @@ public class CloseRedAuto extends LinearOpMode {
                             if(diff==0) carouselIndex=4;
                             else if(diff==1) carouselIndex=0;
                             else carouselIndex=2;
-                            timeout=runtime.milliseconds()+500;
+                            timeout=runtime.milliseconds()+1000;
                             shootingState++;
                         }
                         else if(shootingState==1){
