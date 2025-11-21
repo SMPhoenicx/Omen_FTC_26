@@ -13,6 +13,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
@@ -25,6 +26,11 @@ public class NeuralDetector extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
 
     //region HARDWARE DECLARATIONS
+    // Drive Motors
+    private DcMotor frontLeftDrive = null;
+    private DcMotor frontRightDrive = null;
+    private DcMotor backLeftDrive = null;
+    private DcMotor backRightDrive = null;
     // Vision
     private Limelight3A limelight;
     //endregion
@@ -47,8 +53,8 @@ public class NeuralDetector extends LinearOpMode {
     private ElapsedTime pidTimer = new ElapsedTime();
     double TURN_P = 0.06;
     double TURN_D = 0.002;
-    final double TURN_GAIN = 0.02;
-    final double MAX_AUTO_TURN = 0.4;
+    final double TURN_GAIN = 0.015;
+    final double MAX_AUTO_TURN = 0.3;
     private double distCamOffset = 0;
     //endregion
 
@@ -108,6 +114,30 @@ public class NeuralDetector extends LinearOpMode {
 
         // Localization
         boolean localizeApril = true;
+
+        //Ball tracking
+        double ballTx=0;
+        double lastBallTracking=0;
+        boolean trackingBall=false;
+
+        // Drive Variables
+        double drive = 0;
+        double strafe = 0;
+        double turn = 0;
+        //endregion
+
+        //region HARDWARE INITIALIZATION
+        // Initialize Drive Motors
+        frontLeftDrive = hardwareMap.get(DcMotor.class, "fl");
+        frontRightDrive = hardwareMap.get(DcMotor.class, "fr");
+        backLeftDrive = hardwareMap.get(DcMotor.class, "bl");
+        backRightDrive = hardwareMap.get(DcMotor.class, "br");
+
+        // Configure Motor Directions
+        frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
+        frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
+        backRightDrive.setDirection(DcMotor.Direction.FORWARD);
         //endregion
 
         //region SUBSYSTEM INITIALIZATION
@@ -141,25 +171,74 @@ public class NeuralDetector extends LinearOpMode {
                     }
                 }
                 LLResultTypes.DetectorResult maxDetected = detector.get(maxAreaIndex);
-                double tx = maxDetected.getTargetXDegrees();
+                ballTx = maxDetected.getTargetXDegrees();
                 double ty = maxDetected.getTargetYDegrees();
                 double ta = maxDetected.getTargetArea();
+                lastBallTracking=runtime.milliseconds();
 
                 telemetry.addData("# of balls detected",detector.size());
                 telemetry.addData("Closest ball ID",maxDetected.getClassId());
                 telemetry.addData("Closest ball name",maxDetected.getClassName());
-                telemetry.addData("Ball offset","X: %.3f Y: %.3f",tx,ty);
+                telemetry.addData("Ball offset","X: %.3f Y: %.3f",ballTx,ty);
             } else {
                 telemetry.addData("# of balls detected",0);
+                if(lastBallTracking+1000<runtime.milliseconds()){
+                    ballTx=0;
+                }
             }
             //endregion
 
+            //region BALL TRACKING
+            if(gamepad1.squareWasPressed()){
+                trackingBall=!trackingBall;
+            }
+
+            if(trackingBall) {
+                turn   = Range.clip(-ballTx * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
+                telemetry.addLine("Tracking Ball!");
+            } else{
+                turn = -gamepad1.right_stick_x;
+            }
+            //endregion
+
+            //region DRIVE
+            drive = -gamepad1.left_stick_y;
+            strafe = -gamepad1.left_stick_x;
+
+            moveRobot(drive, strafe, turn);
+            //endregion
 
             telemetry.update();
         }
     }
 
     //region HELPER METHODS
+    public void moveRobot(double x, double y, double yaw) {
+        // Calculate wheel powers.
+        double frontLeftPower    =  x - y - yaw;
+        double frontRightPower   =  x + y + yaw;
+        double backLeftPower     =  x + y - yaw;
+        double backRightPower    =  x - y + yaw;
+
+        // Normalize wheel powers to be less than 1.0
+        double max = Math.max(Math.abs(frontLeftPower), Math.abs(frontRightPower));
+        max = Math.max(max, Math.abs(backLeftPower));
+        max = Math.max(max, Math.abs(backRightPower));
+
+        if (max > 1.0) {
+            frontLeftPower /= max;
+            frontRightPower /= max;
+            backLeftPower /= max;
+            backRightPower /= max;
+        }
+
+        // Send powers to the wheels.
+        frontLeftDrive.setPower(frontLeftPower);
+        frontRightDrive.setPower(frontRightPower);
+        backLeftDrive.setPower(backLeftPower);
+        backRightDrive.setPower(backRightPower);
+    }
+
     // Linear interpolation helper method
     private double interpolate(double x, double[] xValues, double[] yValues) {
         // Clamp to table bounds
