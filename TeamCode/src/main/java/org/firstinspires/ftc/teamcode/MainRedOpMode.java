@@ -187,6 +187,14 @@ public class MainRedOpMode extends LinearOpMode
     private boolean isInitialized = false;
 
     private static final double ALPHA = 0.9;
+
+    private boolean flyHoodLock = false;
+    private double savedSpeed = 0;
+    private double savedAngle= 0;
+    private double savedDist = 0;
+    private double savedRangeCycle = 0;
+    private int autoShootNum = 3;
+    private double autoShootTime = 0;
     //endregion
     @Override
     public void runOpMode() {
@@ -327,6 +335,7 @@ public class MainRedOpMode extends LinearOpMode
                 double distMeters = Math.sqrt(x * x + y * y + z * z); //3D distance
                 double slantRange = Math.round(distMeters * 39.3701 * (114.3 / 165.1)); //in inches
 
+                savedRangeCycle = slantRange;
                 if (!isInitialized) {
                     smoothedRange = slantRange;
                     smoothedTx = tx;
@@ -345,8 +354,23 @@ public class MainRedOpMode extends LinearOpMode
                 }
 
                 double range = z *39.3701;
-                flySpeed = interpolate(smoothedRange, RANGE_SAMPLES, FLY_SPEEDS);
-                hoodAngle = interpolate(smoothedRange, RANGE_SAMPLES, HOOD_ANGLES);
+                if (!flyHoodLock) {
+                    flySpeed = interpolate(smoothedRange, RANGE_SAMPLES, FLY_SPEEDS);
+                    hoodAngle = interpolate(smoothedRange, RANGE_SAMPLES, HOOD_ANGLES);
+                }
+
+                if (gamepad1.right_trigger > 0.5) {
+                    flyHoodLock = true;
+//                    savedSpeed = flySpeed;
+//                    savedAngle = hoodAngle;
+                    savedDist = slantRange;
+                }
+                if (gamepad1.left_trigger > 0.5) {
+                    flyHoodLock = false;
+//                    savedSpeed = 0; idk if needed??
+//                    savedAngle = 0;
+                    savedDist = 0;
+                }
                 hoodAngle = hoodAngle < -190 ? -190:hoodAngle;
                 telemetry.addData("Target ID", desiredTag.getFiducialId());
                 telemetry.addData("Distance", "%.1f inches", smoothedRange);
@@ -600,7 +624,40 @@ public class MainRedOpMode extends LinearOpMode
             }
             //endregion
 
+            //region AUTO SHOOTING
+//            if (facingGoal && targetFound && flyAtSpeed && flyHoodLock && savedDist != 0 && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 380)) {
+//                if (Math.abs(savedRangeCycle - savedDist) < 4) {
+//                    flyOn = true;
+//                    tranOn = true;
+//                    carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
+//                    carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+//                    autoShootNum--;
+//                    autoShootTime = runtime.milliseconds();
+//                }
+//            }
+//            if (facingGoal && targetFound && flyHoodLock && savedDist != 0 && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 500)) {
+//
+//                if (Math.abs(savedRangeCycle - savedDist) < 4) {
+//                    if (flyOn && flyAtSpeed) {
+//                        tranOn = true;
+//                        carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
+//                        carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+//                        autoShootNum--;
+//                        autoShootTime = runtime.milliseconds();
+//                    }
+//                    else {
+//                    flyOn = true;
+//                    }
+//                }
+//            }
+//            if (!flyHoodLock || !flyOn) {
+//                autoShootNum = 3;
+//            }
+
+            //endregion
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
+            telemetry.addData("LOCK STATUS", flyHoodLock);
+            telemetry.addData("SAVED DIST", savedDist);
             telemetry.update();
         }
     }

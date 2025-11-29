@@ -216,7 +216,7 @@ public class CloseBlueAuto extends LinearOpMode {
         int flySpeed = 0;
         boolean running = true;
         boolean transOn = false;
-        int flySpeedTarget = 1198;
+        int flySpeedTarget = 1208;
         //endregion
 
         //region HARDWARE INFO
