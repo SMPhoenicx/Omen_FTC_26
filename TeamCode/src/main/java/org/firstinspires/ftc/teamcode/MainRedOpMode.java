@@ -143,28 +143,28 @@ public class MainRedOpMode extends LinearOpMode
     private double hoodOffset = 0;
     //endregion
 
-    //region CAROUSEL SYSTEM
-    // Carousel PIDF Constants
+    //region SPINDEXER SYSTEM
+    // Spindexer PIDF Constants
     private double pidKp = 0.0057;
     private double pidKi = 0.00166;
     private double pidKd = 0.00002;
     private double pidKf = 0.0;
 
-    // Carousel PID State
+    // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
     private double integralLimit = 500.0;
     private double pidLastTimeMs = 0.0;
 
-    // Carousel Control Parameters
+    // Spindexer Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
 
-    // Carousel Positions (6 presets, every 60 degrees)
+    // Spindexer Positions (6 presets, every 60 degrees)
     // 57, 177, and 297 face the intake; others face the transfer
-    private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
-    private int carouselIndex = 0;
-    private int prevCarouselIndex = 0;
+    private final double[] SPINDEXER_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
+    private int spindexerIndex = 0;
+    private int prevSpindexerIndex = 0;
 
     // Ball Storage Tracking
     // 'n' = none (empty), 'p' = purple, 'g' = green
@@ -195,7 +195,9 @@ public class MainRedOpMode extends LinearOpMode
     private double savedRangeCycle = 0;
     private int autoShootNum = 3;
     private double autoShootTime = 0;
+    private boolean autoShot = false;
     //endregion
+    
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -382,6 +384,24 @@ public class MainRedOpMode extends LinearOpMode
 
             }
             //endregion
+            
+            //region COLOR SENSOR AND BALL TRACKING
+            char detectedColor = getDetectedColor();
+
+            // Update saved ball positions based on spindexer position
+            if (spindexerIndex == 0) savedBalls[0] = detectedColor;
+            if (spindexerIndex == 2) savedBalls[1] = detectedColor;
+            if (spindexerIndex == 4) savedBalls[2] = detectedColor;
+
+            // Clear ball positions when transferring
+            if (tranOn && flyOn) {
+                if (spindexerIndex == 1) savedBalls[2] = 0;
+                if (spindexerIndex == 3) savedBalls[0] = 0;
+                if (spindexerIndex == 5) savedBalls[1] = 0;
+            }
+
+            telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
+            //endregion
 
             //region FLYWHEEL CONTROL
             // Manual Speed Adjustment
@@ -483,56 +503,55 @@ public class MainRedOpMode extends LinearOpMode
             }
             //endregion
 
-            //region CAROUSEL CONTROL
-            // Carousel Navigation
+            //region SPINDEXER CONTROL
+            // Spindexer Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
             if (gamepad2.dpadLeftWasPressed()) {
-                prevCarouselIndex = carouselIndex;
-                carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
-                carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
-                spinBallLED();
+                spinCounterClock();
             }
             if (gamepad2.dpadRightWasPressed()) {
-                prevCarouselIndex = carouselIndex;
-                carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
-                carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                spinBallLED();
+               spinClock();
             }
-            //Down and Up go to transfer positions, aka the even numbered indices on the pos array
+            //intake positions are the even ones
             if (gamepad2.dpadUpWasPressed()) {
-                prevCarouselIndex = carouselIndex;
-                carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
-                carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                spinBallLED();
+                autoShot = true;
+                autoShootNum = 3;
             }
-            if (gamepad2.dpadDownWasPressed()) {
-                prevCarouselIndex = carouselIndex;
-                carouselIndex += carouselIndex % 2 == 0 ? 1 : 0;
-                carouselIndex = (carouselIndex + 2) % CAROUSEL_POSITIONS.length;
-                spinBallLED();
+            
+            if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 350)) {
+                spinClock();
+                autoShootNum--;
+                autoShootTime = runtime.milliseconds();
+            }
+            
+            if (autoShootNum <= 0) {
+                autoShot = false;
+            }
+            
+//            if (gamepad2.dpadDownWasPressed()) {
+//                prevSpindexerIndex = spindexerIndex;
+//                spindexerIndex += spindexerIndex % 2 == 0 ? 1 : 0;
+//                spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
+//                spinBallLED();
+//            }
+
+            if (intakeOn) {
+                int emptyIndex = -1;
+                for (int i = 0; i < savedBalls.length; i++) {
+                    if (savedBalls[i] == 'n') {
+                        emptyIndex = i;
+                        break;
+                        }
+                }
+
+                if (emptyIndex == 0) spindexerIndex = 0;
+                else if (emptyIndex == 1) spindexerIndex = 2;
+                else if (emptyIndex == 2) spindexerIndex = 4;
             }
 
-            // Update Carousel PID
-            double targetAngle = CAROUSEL_POSITIONS[carouselIndex];
-            updateCarouselPID(targetAngle, dtSec);
-            //endregion
-
-            //region COLOR SENSOR AND BALL TRACKING
-            char detectedColor = getDetectedColor();
-
-            // Update saved ball positions based on carousel position
-            if (carouselIndex == 0) savedBalls[0] = detectedColor;
-            if (carouselIndex == 2) savedBalls[1] = detectedColor;
-            if (carouselIndex == 4) savedBalls[2] = detectedColor;
-
-            // Clear ball positions when transferring
-            if (tranOn && flyOn) {
-                if (carouselIndex == 1) savedBalls[2] = 0;
-                if (carouselIndex == 3) savedBalls[0] = 0;
-                if (carouselIndex == 5) savedBalls[1] = 0;
-            }
-
-            telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
+            // Update Spindexer PID
+            double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
+            updateSpindexerPID(targetAngle, dtSec);
             //endregion
 
             //region GOAL TRACKING
@@ -624,13 +643,13 @@ public class MainRedOpMode extends LinearOpMode
             }
             //endregion
 
-            //region AUTO SHOOTING
+            //region OLD AUTO SHOOTING
 //            if (facingGoal && targetFound && flyAtSpeed && flyHoodLock && savedDist != 0 && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 380)) {
 //                if (Math.abs(savedRangeCycle - savedDist) < 4) {
 //                    flyOn = true;
 //                    tranOn = true;
-//                    carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
-//                    carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+//                    spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+//                    spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
 //                    autoShootNum--;
 //                    autoShootTime = runtime.milliseconds();
 //                }
@@ -640,8 +659,8 @@ public class MainRedOpMode extends LinearOpMode
 //                if (Math.abs(savedRangeCycle - savedDist) < 4) {
 //                    if (flyOn && flyAtSpeed) {
 //                        tranOn = true;
-//                        carouselIndex += carouselIndex % 2 != 0 ? 1 : 0;
-//                        carouselIndex = (carouselIndex - 2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
+//                        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+//                        spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
 //                        autoShootNum--;
 //                        autoShootTime = runtime.milliseconds();
 //                    }
@@ -655,9 +674,10 @@ public class MainRedOpMode extends LinearOpMode
 //            }
 
             //endregion
+            
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
-            telemetry.addData("LOCK STATUS", flyHoodLock);
-            telemetry.addData("SAVED DIST", savedDist);
+//            telemetry.addData("LOCK STATUS", flyHoodLock);
+//            telemetry.addData("SAVED DIST", savedDist);
             telemetry.update();
         }
     }
@@ -690,7 +710,20 @@ public class MainRedOpMode extends LinearOpMode
         backRightDrive.setPower(backRightPower);
     }
 
-    private void updateCarouselPID(double targetAngle, double dt) {
+    public void spinClock() {
+        prevSpindexerIndex = spindexerIndex;
+        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+        spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+        spinBallLED();
+    }
+    public void spinCounterClock() {
+        prevSpindexerIndex = spindexerIndex;
+        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+        spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
+        spinBallLED();
+    }
+
+    private void updateSpindexerPID(double targetAngle, double dt) {
         double ccwOffset = -6.0;
         // read angles 0..360
         double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
@@ -739,7 +772,7 @@ public class MainRedOpMode extends LinearOpMode
         lastError = error;
 
         // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("Carousel Target", "%.1f°", targetAngle);
+        telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
 
     }
 
@@ -789,13 +822,14 @@ public class MainRedOpMode extends LinearOpMode
     }
 
     private void spinBallLED(){
-        if(carouselIndex % 2 == 0){
-            int avgIndex = (carouselIndex + prevCarouselIndex)/ 2;
+        if(spindexerIndex % 2 == 0){
+            int avgIndex = (spindexerIndex + prevSpindexerIndex)/ 2;
             if (avgIndex == 2) avgIndex = 5;
             int ballIndex = 0;
-//                int ballIndex = 0.375*(carouselIndex*carouselIndex)-2.5*carouselIndex+4.125;
+
+
             if(avgIndex==1) ballIndex=2;
-            else if(avgIndex==3) ballIndex=0;
+//            else if(avgIndex==3) ballIndex=0;
             else if(avgIndex==5) ballIndex=1;
 
             ballIndex = (ballIndex - 1 + 3) % 3;
