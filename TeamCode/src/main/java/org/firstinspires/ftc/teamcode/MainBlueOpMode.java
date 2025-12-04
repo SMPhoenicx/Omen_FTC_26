@@ -70,9 +70,8 @@ import java.util.concurrent.TimeUnit;
 public class MainBlueOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
-
     //region HARDWARE DECLARATIONS
-// Drive Motors
+    // Drive Motors
     private DcMotor frontLeftDrive = null;
     private DcMotor frontRightDrive = null;
     private DcMotor backLeftDrive = null;
@@ -98,26 +97,27 @@ public class MainBlueOpMode extends LinearOpMode
     private AnalogInput turretEncoder;
     private NormalizedColorSensor color = null;
 
-    // Vision
+    // Vision Hardware
     private Limelight3A limelight;
-//endregion
+    //endregion
 
     //region VISION SYSTEM
     // AprilTag Configuration
-    private static final int DESIRED_TAG_ID = 20; //blue id is 20, red is 24
+    private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
     private AprilTagDetection desiredTag;
 
-    //Webcam Vars
+    // FTC Vision Portal
     private VisionPortal visionPortal;
     private AprilTagProcessor aprilTag;
 
     // Tracking State
-    private boolean facingGoal = false; //used for tracking
-    private double lastKnownBearing = 0; //used for smoothing
+    private boolean facingGoal = false;
+    private double lastKnownBearing = 0;
     private double lastKnownRange = 0;
     private long lastDetectionTime = 0;
     private static final long PREDICTION_TIMEOUT = 500;
     private double txOffset = 0;
+    private double distCamOffset = 0;
 
     // Heading PID
     private double lastHeadingError = 0;
@@ -126,13 +126,12 @@ public class MainBlueOpMode extends LinearOpMode
     double TURN_D = 0.002;
     final double TURN_GAIN = 0.02;
     final double MAX_AUTO_TURN = 0.4;
-    private double distCamOffset = 0;
-//endregion
+    //endregion
 
     //region FLYWHEEL SYSTEM
-    // Flywheel PID Constants
+    // PID Constants
     double flyKp = 9.0;
-    double flyKi = 0.6; //TODO
+    double flyKi = 0.6;
     double flyKd = 3.6;
     double flyKiOffset = 0.0;
     //endregion
@@ -151,7 +150,7 @@ public class MainBlueOpMode extends LinearOpMode
     private double hoodOutputDeadband = 0.05;
     private double hoodToleranceDeg = 2.0;
 
-    // Hood Tuning Adjustments
+    // Tuning Adjustments
     private final double hoodKpUp = 0.005;
     private final double hoodKiUp = 0.00001;
     private final double hoodKdUp = 0.005;
@@ -162,51 +161,81 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     //region SPINDEXER SYSTEM
-    // Spindexer PIDF Constants
+    // PIDF Constants
     private double pidKp = 0.0075;
     private double pidKi = 0.0006;
     private double pidKd = 0.000106;
     private double pidKf = 0.0001;
 
-    // Spindexer PID State
+    // PID State
     private double integral = 0.0;
     private double lastError = 0.0;
     private double integralLimit = 500.0;
     private double pidLastTimeMs = 0.0;
 
-    // Spindexer Control Parameters
+    // Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
 
-    // Spindexer Positions (6 presets, every 60 degrees)
-    // 57, 177, and 297 face the intake; others face the transfer
+    // Position Presets (6 slots)
     private final double[] SPINDEXER_POSITIONS = {40.0, 100.0, 160.0, 220.0, 280.0, 340.0};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
-    // Ball Storage Tracking
-    // 'n' = none (empty), 'p' = purple, 'g' = green
+    // Ball Storage Tracking ('n','p','g')
     private char[] savedBalls = {'n', 'n', 'n'};
+
+    // Auto-intake State Machine
+    private enum SpindexerState {
+        IDLE,
+        FIND_EMPTY_SLOT,
+        ROTATE_TO_SLOT,
+        WAIT_FOR_SETTLE,
+        WAIT_FOR_BALL
+    }
+
+    private SpindexerState spState = SpindexerState.IDLE;
+    private int currentSlot = -1;
+    private long settleStartMs = 0;
+
+    // Ball detection thresholds
+    private static final float BALL_ALPHA_ON  = 0.20f;
+    private static final float BALL_ALPHA_OFF = 0.13f;
+
+    private boolean ballPresentLatched = false;
+
+    // Runtime Spindexer Vars
+    private double spindexerAngleDeg = 0.0;
+    private double spindexerErrorDeg = 0.0;
+    private double spindexerOutput = 0.0;
+    private boolean spindexerAtTarget = false;
+    private double lastColorRead = 0;
     //endregion
 
     //region TURRET SYSTEM
-    // Turret PIDF Constants
+    // PIDF Constants
     private double tuKp = 0.0055;
     private double tuKi = 0.000;
     private double tuKd = 0.00012;
     private double tuKf = 0.0;
 
-    // Turret PID State
+    // PID State
     private double tuIntegral = 0.0;
     private double tuLastError = 0.0;
     private double tuIntegralLimit = 500.0;
 
-    // Turret Control Parameters
+    // Control Parameters
     private final double tuToleranceDeg = 2.0;
     private final double tuDeadband = 0.03;
 
-    // Turret Positions
+    // Turret Position
     private double tuPos = 0;
+
+    // Tracking Assist
+    private double turretTrackingOffset = 0;
+    private double lastTurretError = 0;
+    private static final double TURRET_TRACKING_GAIN = 0.2;
+    private static final double TURRET_DERIVATIVE_GAIN = 0.9;
     //endregion
 
     //region PEDROPATHING SYSTEM
@@ -215,33 +244,24 @@ public class MainBlueOpMode extends LinearOpMode
     Pose endgamePose = new Pose(103, 37.5, Math.toRadians(90));
     //endregion
 
-    //region TELE EXTRA VARS
+    //region SHOOTING VARS
     private static final double[] RANGE_SAMPLES = {31, 36, 41, 46, 51, 71.5, 78, 85, 90, 93};
     private static final double[] FLY_SPEEDS = {1220, 1255, 1300, 1340, 1390, 1560, 1590, 1630, 1670, 1700};
     private static final double[] HOOD_ANGLES = {-6, -33, -40, -50, -80, -140, -180, -200, -187, -177};
 
     private double smoothedRange = 0;
-    private double smoothedTx = 0;
     private boolean isInitialized = false;
-
     private static final double ALPHA = 0.9;
 
     private boolean flyHoodLock = false;
     private double savedSpeed = 0;
-    private double savedAngle= 0;
+    private double savedAngle = 0;
     private double savedDist = 0;
     private double savedRangeCycle = 0;
+
     private int autoShootNum = 3;
     private double autoShootTime = 0;
     private boolean autoShot = false;
-
-    private double lastColorRead = 0;
-
-    private double turretTrackingOffset = 0;
-    private double lastTurretError = 0;
-    private static final double TURRET_TRACKING_GAIN = 0.2;  // P term
-    private static final double TURRET_DERIVATIVE_GAIN = 0.9;
-
     //endregion
 
     @Override
@@ -330,17 +350,19 @@ public class MainBlueOpMode extends LinearOpMode
         // Initialize Limelight
         //endregion
 
-        //Camera Setup
+        //region PRE-START
         initAprilTag();
         setManualExposure(4, 200);
 
         telemetry.update();
         waitForStart();
         runtime.reset();
+        //endregion
 
         while (opModeIsActive()) {
             follower.update();
             pidLastTimeMs = runtime.milliseconds();
+
             //region TO REMOVE
             double lastPAdjustTime = 0;
             double lastIAdjustTime = 0;
@@ -408,14 +430,14 @@ public class MainBlueOpMode extends LinearOpMode
             //region COLOR SENSOR AND BALL TRACKING
             char detectedColor = getDetectedColor();
 
-            if (runtime.milliseconds() - lastColorRead > 150) {
-                //TODO check all of this index stuff
-                // Update saved ball positions based on spindexer position
-                if (spindexerIndex == 0) savedBalls[0] = detectedColor;
-                if (spindexerIndex == 2) savedBalls[1] = detectedColor;
-                if (spindexerIndex == 4) savedBalls[2] = detectedColor;
-                lastColorRead = runtime.milliseconds();
+            if (spindexerAtTarget && runtime.milliseconds() - lastColorRead > 40) {
+                int slot = indexToSlot(spindexerIndex);
+                if (slot != -1) {
+                    savedBalls[slot] = detectedColor;  // 'n', 'g', or 'p'
+                    lastColorRead = runtime.milliseconds();
+                }
             }
+
 
             // Clear ball positions when transferring
             if (tranOn && flyOn) {
@@ -425,6 +447,9 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
+            NormalizedRGBA raw = color.getNormalizedColors();
+            telemetry.addData("Alpha", raw.alpha);
+            telemetry.addData("BallPresent", isBallPresent());
             //endregion
 
             //region FLYWHEEL CONTROL
@@ -501,18 +526,33 @@ public class MainBlueOpMode extends LinearOpMode
             if (gamepad1.rightBumperWasPressed()) {
                 intakePower = 1;
                 intakeOn = !intakeOn;
+
+                if (intakeOn) {
+                    // Start / resume auto-intake when intake is on and pulling balls in
+                    spState = SpindexerState.FIND_EMPTY_SLOT;
+                } else {
+                    // Turned intake off
+                    spState = SpindexerState.IDLE;
+                    currentSlot = -1;
+                }
             }
 
             // Outtake
             if (gamepad1.leftBumperWasPressed()) {
                 intakePower = -0.6;
+                // When we’re outtaking, don’t auto-rotate the spindexer
+                spState = SpindexerState.IDLE;
+                currentSlot = -1;
             }
 
             if (intakeOn) {
                 intake.setPower(intakePower);
-            }
-            else {
+            } else {
                 intake.setPower(0);
+            }
+
+            if (intakeOn && intakePower > 0) {
+                updateSpindexerAutoIntake();
             }
             //endregion
 
@@ -531,11 +571,16 @@ public class MainBlueOpMode extends LinearOpMode
             // Spindexer Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
             if (gamepad2.dpadLeftWasPressed()) {
+                spState = SpindexerState.IDLE;
+                currentSlot = -1;
                 spinCounterClock();
             }
             if (gamepad2.dpadRightWasPressed()) {
+                spState = SpindexerState.IDLE;
+                currentSlot = -1;
                 spinClock();
             }
+
             //intake positions are the even ones
 //            if (gamepad2.dpadUpWasPressed()) {
 //                autoShot = true;
@@ -550,28 +595,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             if (autoShootNum <= 0) {
                 autoShot = false;
-            }
-
-//            if (gamepad2.dpadDownWasPressed()) {
-//                prevSpindexerIndex = spindexerIndex;
-//                spindexerIndex += spindexerIndex % 2 == 0 ? 1 : 0;
-//                spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
-//                spinBallLED();
-//            }
-
-            //TODO
-            if (intakeOn) {
-                int emptyIndex = -1;
-                for (int i = 0; i < savedBalls.length; i++) {
-                    if (savedBalls[i] == 'n') {
-                        emptyIndex = i;
-                        break;
-                    }
-                }
-
-                if (emptyIndex == 0) spindexerIndex = 0;
-                else if (emptyIndex == 1) spindexerIndex = 2;
-                else if (emptyIndex == 2) spindexerIndex = 4;
             }
 
             // Update Spindexer PID
@@ -617,66 +640,66 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region GOAL TRACKING
 
-                if (targetFound) {
-                    lastKnownBearing = desiredTag.ftcPose.bearing;
-                    lastKnownRange = desiredTag.ftcPose.range;
-                    lastDetectionTime = System.currentTimeMillis();
+            if (targetFound) {
+                lastKnownBearing = desiredTag.ftcPose.bearing;
+                lastKnownRange = desiredTag.ftcPose.range;
+                lastDetectionTime = System.currentTimeMillis();
 
-                    double headingError = desiredTag.ftcPose.bearing;
+                double headingError = desiredTag.ftcPose.bearing;
+                double deltaTime = pidTimer.seconds();
+                double derivative = (headingError - lastHeadingError) / deltaTime;
+                pidTimer.reset();
+
+                if (Math.abs(headingError) < 5.0) {
+                    tuPos = turretTrackingOffset;
+                }
+                else {
+                    double positionAdjustment = (headingError * TURRET_TRACKING_GAIN)
+                            + (-derivative * TURRET_DERIVATIVE_GAIN);
+
+                    positionAdjustment = Range.clip(positionAdjustment, -20.0, 20.0);
+                    turretTrackingOffset += positionAdjustment;
+                    turretTrackingOffset = Range.clip(turretTrackingOffset, -180, 180);
+                    tuPos = turretTrackingOffset;
+
+                    lastTurretError = headingError;
+                }
+
+                lastHeadingError = headingError;
+
+                telemetry.addData("Tracking", "LIVE (err: %.1f°, turret: %.1f°)",
+                        headingError, tuPos);
+            }
+            else {
+                // Prediction when target lost
+                long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
+
+                if (timeSinceLost < PREDICTION_TIMEOUT) {
+                    //continue tracking last known bearing
+                    double headingError = lastKnownBearing;
                     double deltaTime = pidTimer.seconds();
                     double derivative = (headingError - lastHeadingError) / deltaTime;
                     pidTimer.reset();
 
                     if (Math.abs(headingError) < 5.0) {
                         tuPos = turretTrackingOffset;
-                    }
-                    else {
-                        double positionAdjustment = (headingError * TURRET_TRACKING_GAIN)
-                                + (-derivative * TURRET_DERIVATIVE_GAIN);
-
-                        positionAdjustment = Range.clip(positionAdjustment, -20.0, 20.0);
+                    } else {
+                        double positionAdjustment = (headingError * TURRET_TRACKING_GAIN);
                         turretTrackingOffset += positionAdjustment;
                         turretTrackingOffset = Range.clip(turretTrackingOffset, -180, 180);
                         tuPos = turretTrackingOffset;
-
-                        lastTurretError = headingError;
                     }
 
                     lastHeadingError = headingError;
-
-                    telemetry.addData("Tracking", "LIVE (err: %.1f°, turret: %.1f°)",
-                            headingError, tuPos);
+                    telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
+                } else {
+                    lastHeadingError = 0;
+                    pidTimer.reset();
+                    telemetry.addData("Tracking", "LOST");
                 }
-                else {
-                    // Prediction when target lost
-                    long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
-
-                    if (timeSinceLost < PREDICTION_TIMEOUT) {
-                        //continue tracking last known bearing
-                        double headingError = lastKnownBearing;
-                        double deltaTime = pidTimer.seconds();
-                        double derivative = (headingError - lastHeadingError) / deltaTime;
-                        pidTimer.reset();
-
-                        if (Math.abs(headingError) < 5.0) {
-                            tuPos = turretTrackingOffset;
-                        } else {
-                            double positionAdjustment = (headingError * TURRET_TRACKING_GAIN);
-                            turretTrackingOffset += positionAdjustment;
-                            turretTrackingOffset = Range.clip(turretTrackingOffset, -180, 180);
-                            tuPos = turretTrackingOffset;
-                        }
-
-                        lastHeadingError = headingError;
-                        telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
-                    } else {
-                        lastHeadingError = 0;
-                        pidTimer.reset();
-                        telemetry.addData("Tracking", "LOST");
-                    }
-                }
-                // Manual control
-                turn = -gamepad1.right_stick_x;
+            }
+            // Manual control
+            turn = -gamepad1.right_stick_x;
             //endregion
 
             //region ENDGAME NAVIGATION
@@ -799,6 +822,94 @@ public class MainBlueOpMode extends LinearOpMode
         spinBallLED();
     }
 
+    private int indexToSlot(int index) {
+        switch (index) {
+            case 0: return 0;
+            case 2: return 1;
+            case 4: return 2;
+            default: return -1;
+        }
+    }
+
+    private int slotToIndex(int slot) {
+        switch (slot) {
+            case 0: return 0;
+            case 1: return 2;
+            case 2: return 4;
+            default: return -1;
+        }
+    }
+
+    private void updateSpindexerAutoIntake() {
+        long now = (long) runtime.milliseconds();
+
+        switch (spState) {
+            case IDLE:
+                // Do nothing – spindexer is under manual control.
+                break;
+
+            case FIND_EMPTY_SLOT:
+                currentSlot = -1;
+                // look for first empty slot in savedBalls
+                for (int i = 0; i < savedBalls.length; i++) {
+                    if (savedBalls[i] == 'n') {   // 'n' = empty
+                        currentSlot = i;
+                        break;
+                    }
+                }
+
+                if (currentSlot == -1) {
+                    // No empty slots -> stop auto-intake
+                    spState = SpindexerState.IDLE;
+                } else {
+                    int targetIndex = slotToIndex(currentSlot);
+                    if (targetIndex != -1) {
+                        spindexerIndex = targetIndex;    // tell PID where to go
+                        spState = SpindexerState.ROTATE_TO_SLOT;
+                    } else {
+                        spState = SpindexerState.IDLE;
+                    }
+                }
+                break;
+
+            case ROTATE_TO_SLOT:
+                // PID is already rotating us to SPINDEXER_POSITIONS[spindexerIndex]
+                if (spindexerAtTarget && Math.abs(spindexerOutput) < 1e-3) {
+                    settleStartMs = now;
+                    spState = SpindexerState.WAIT_FOR_SETTLE;
+                }
+                break;
+
+            case WAIT_FOR_SETTLE:
+                // If we drift out of target, go back to ROTATE
+                if (!spindexerAtTarget) {
+                    spState = SpindexerState.ROTATE_TO_SLOT;
+                    break;
+                }
+
+                // Tiny dwell to let vibrations die down
+                if (now - settleStartMs > 40) {   // 40 ms is a good starting point
+                    spState = SpindexerState.WAIT_FOR_BALL;
+                }
+                break;
+
+            case WAIT_FOR_BALL:
+                // Option 1: use distance (alpha) for occupancy
+                 boolean occupied = isBallPresent();
+
+                // Option 2: use the color logic you already have:
+                // savedBalls[currentSlot] will flip from 'n' to 'g'/'p'
+//                boolean occupied = (savedBalls[currentSlot] != 'n');
+
+                if (occupied) {
+                    // This slot is now full – go find the next empty one
+                    spState = SpindexerState.FIND_EMPTY_SLOT;
+                }
+                break;
+        }
+    }
+
+
     private void updateSpindexerPID(double targetAngle, double dt) {
         double ccwOffset = -6.0;
         // read angles 0..360
@@ -816,6 +927,10 @@ public class MainBlueOpMode extends LinearOpMode
         }
         // compute shortest signed error [-180,180]
         double error = -angleError(compensatedTarget, angle);
+
+        //store for outside use
+        spindexerAngleDeg = angle;
+        spindexerErrorDeg = error;
 
         // integral with anti-windup
         integral += error * dt;
@@ -839,6 +954,10 @@ public class MainBlueOpMode extends LinearOpMode
             out = 0.0;
             integral *= 0.2;
         }
+
+        //store for outside use
+        spindexerOutput = out;
+        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg);
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
         spin1.setPower(out);
@@ -996,6 +1115,19 @@ public class MainBlueOpMode extends LinearOpMode
         }
         return 'n';
     }
+    private boolean isBallPresent() {
+        NormalizedRGBA colors = color.getNormalizedColors();
+        float a = colors.alpha;
+
+        if (!ballPresentLatched && a > BALL_ALPHA_ON) {
+            ballPresentLatched = true;   // turn ON when we cross the high threshold
+        } else if (ballPresentLatched && a < BALL_ALPHA_OFF) {
+            ballPresentLatched = false;  // turn OFF when we drop below the low threshold
+        }
+
+        return ballPresentLatched;
+    }
+
 
     private double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
