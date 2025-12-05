@@ -440,26 +440,19 @@ public class CloseRedAuto extends LinearOpMode {
             //endregion
 
             //region INTAKE
-            if((pathState==6||pathState==11||pathState==16)&&runtime.milliseconds()>timeout){
-                if(getDetectedColor()!='n'&&savedBalls[carouselIndex/2]=='n'){//detect one ball intake
-                    savedBalls[carouselIndex/2]=getDetectedColor();
-                    carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                    timeout = runtime.milliseconds()+500;
-                }
-                //if spindexer is full
-                boolean full = true;
-                for(int i=0;i<3;i++){
-                    if(savedBalls[i]=='n'){
-                        full=false;
-                        break;
-                    }
-                }
-                if(full||!follower.isBusy()){
-                    follower.breakFollowing();
-                    pathState++;
-//                    intake.setPower(0);
-                }
-            }
+//            if(intakeOn&&runtime.milliseconds()>timeout){
+//                if(getDetectedColor()!='n'&&savedBalls[spindexerIndex/2]=='n'){//detect one ball intake
+//                    savedBalls[spindexerIndex/2]=getDetectedColor();
+//                    spinClock();
+//                    timeout = runtime.milliseconds()+500;
+//                }
+//                if(spindexerFull()||!follower.isBusy()){
+//                    follower.breakFollowing();
+//                    intakeOn = false;
+//
+//                    subState++;
+//                }
+//            }
             //endregion
 
             //region HOOD CONTROL

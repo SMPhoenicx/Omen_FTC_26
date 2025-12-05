@@ -3,7 +3,9 @@ package org.firstinspires.ftc.teamcode.pedroPathing;
 import android.util.Size;
 
 import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.FuturePose;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.HeadingInterpolator;
 import com.pedropathing.paths.PathChain;
@@ -29,7 +31,6 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
-import org.firstinspires.ftc.teamcode.MainBlueOpMode;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
@@ -50,9 +51,9 @@ public class CloseBlueAuto extends LinearOpMode {
     private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
     private PathChain obeliskPath, scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath;
-    private PathChain[] pickupPath1 = new PathChain[2];
-    private PathChain[] pickupPath2 = new PathChain[2];
-    private PathChain[] pickupPath3 = new PathChain[2];
+    private PathChain[] pickupPath1 = new PathChain[3];
+    private PathChain[] pickupPath2 = new PathChain[3];
+    private PathChain[] pickupPath3 = new PathChain[3];
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -115,8 +116,8 @@ public class CloseBlueAuto extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.4;
-    double flyKd = 3.0;
+    double flyKi = 0.6;
+    double flyKd = 3.6;
     double flyKiOffset = 0.0;
     //endregion
 
@@ -146,10 +147,10 @@ public class CloseBlueAuto extends LinearOpMode {
 
     //region SPINDEXER SYSTEM
     // PIDF Constants
-    private double pidKp = 0.010;
-    private double pidKi = 0.000;//6;
-    private double pidKd = 0.000;//5/1000;
-    private double pidKf = 0.0001;
+    private double pidKp = 0.009;
+    private double pidKi = 0.0000043;
+    private double pidKd = 0.00000014;
+    private double pidKf = 0.001;
 
     // PID State
     private double integral = 0.0;
@@ -199,10 +200,10 @@ public class CloseBlueAuto extends LinearOpMode {
 
     public void createPoses(){
         startPose = new Pose(144-121,121,Math.toRadians(180-125));
-        obelisk = new Pose(144-85,85,Math.toRadians(180));
+        obelisk = new Pose(144-100,100,Math.toRadians(180));
 
         pickup1[0] = new Pose(144-94,82.5,Math.toRadians(180));
-        pickup1[1] = new Pose(144-123,82.5,Math.toRadians(180));
+        pickup1[1] = new Pose(144-120,82.5,Math.toRadians(180));
         pickup1[2] = new Pose(144-100,82.5,Math.toRadians(180));
 
         pickup2[0] = new Pose(144-94,58,Math.toRadians(180));
@@ -218,67 +219,67 @@ public class CloseBlueAuto extends LinearOpMode {
     }
 
     public void createPaths(){
+//        limelightPath = follower.pathBuilder()
+//                .addPath(new BezierCurve(this::limelightPose, follower::getPose))
+//                .build();
         obeliskPath = follower.pathBuilder()
-                .addPath(new BezierLine(startPose,obelisk))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(144-72,144))
+                .addPath(new BezierCurve(startPose,obelisk))
+                .setLinearHeadingInterpolation(startPose.getHeading(),obelisk.getHeading())
                 .build();
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierLine(obelisk,shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
+                .addPath(new BezierCurve(obelisk,shoot1))
+                .setLinearHeadingInterpolation(obelisk.getHeading(),shoot1.getHeading())
                 .build();
         pickupPath1[0] = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,pickup1[0]))
+                .addPath(new BezierCurve(shoot1,pickup1[0]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup1[0].getHeading())
-//                .setBrakingStrength(0.5)
                 .build();
         pickupPath1[1] = follower.pathBuilder()
                 .addPath(new BezierLine(pickup1[0],pickup1[1]))
                 .setLinearHeadingInterpolation(pickup1[0].getHeading(),pickup1[1].getHeading())
-//                .setBrakingStrength(0.5)
-                .setTimeoutConstraint(1000)
+                .build();
+        pickupPath1[2] = follower.pathBuilder()
+                .addPath(new BezierCurve(pickup1[1],pickup1[2]))
+                .setLinearHeadingInterpolation(pickup1[1].getHeading(),pickup1[2].getHeading())
                 .build();
         pickupPath2[0] = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,pickup2[0]))
+                .addPath(new BezierCurve(shoot1,pickup2[0]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[0].getHeading())
-//                .setBrakingStrength(0.5)
                 .build();
         pickupPath2[1] = follower.pathBuilder()
                 .addPath(new BezierLine(pickup2[0],pickup2[1]))
                 .setLinearHeadingInterpolation(pickup2[0].getHeading(),pickup2[1].getHeading())
-//                .setBrakingStrength(0.5)
-                .setTimeoutConstraint(1000)
+                .build();
+        pickupPath2[2] = follower.pathBuilder()
+                .addPath(new BezierCurve(pickup2[1],pickup2[2]))
+                .setLinearHeadingInterpolation(pickup2[1].getHeading(),pickup2[2].getHeading())
                 .build();
         pickupPath3[0] = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,pickup3[0]))
+                .addPath(new BezierCurve(shoot1,pickup3[0]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[0].getHeading())
-//                .setBrakingStrength(0.5)
                 .build();
         pickupPath3[1] = follower.pathBuilder()
                 .addPath(new BezierLine(pickup3[0],pickup3[1]))
                 .setLinearHeadingInterpolation(pickup3[0].getHeading(),pickup3[1].getHeading())
-//                .setBrakingStrength(0.5)
-                .setTimeoutConstraint(1000)
+                .build();
+        pickupPath3[2] = follower.pathBuilder()
+                .addPath(new BezierCurve(pickup3[1],pickup3[2]))
+                .setLinearHeadingInterpolation(pickup3[1].getHeading(),pickup3[2].getHeading())
                 .build();
         scorePath1 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup1[1],pickup1[2]))
-                .setLinearHeadingInterpolation(pickup1[1].getHeading(),pickup1[2].getHeading())
-                .addPath(new BezierLine(pickup1[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
+                .addPath(new BezierCurve(pickup1[2],shoot1))
+                .setLinearHeadingInterpolation(pickup1[2].getHeading(),shoot1.getHeading())
                 .build();
         scorePath2 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup2[1],pickup2[2]))
-                .setLinearHeadingInterpolation(pickup2[1].getHeading(),pickup2[2].getHeading())
-                .addPath(new BezierLine(pickup2[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
+                .addPath(new BezierCurve(pickup2[2],shoot1))
+                .setLinearHeadingInterpolation(pickup2[2].getHeading(),shoot1.getHeading())
                 .build();
         scorePath3 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup3[1],pickup3[2]))
-                .setLinearHeadingInterpolation(pickup3[1].getHeading(),pickup3[2].getHeading())
-                .addPath(new BezierLine(pickup3[2],shoot1))
-                .setHeadingInterpolation(HeadingInterpolator.facingPoint(5,144))
+                .addPath(new BezierCurve(pickup3[2],shoot1))
+                .setLinearHeadingInterpolation(pickup3[2].getHeading(),shoot1.getHeading())
                 .build();
         moveScore = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,movePoint))
+                .addPath(new BezierCurve(shoot1,movePoint))
                 .setConstantHeadingInterpolation(movePoint.getHeading())
                 .build();
     }
@@ -292,7 +293,7 @@ public class CloseBlueAuto extends LinearOpMode {
         // Camera State
         boolean targetFound = false;
 
-        int shootingState = 5;
+        int shootingState = 0;
         int flySpeed = 0;
         boolean running = true;
         int flySpeedTarget = 1208;
@@ -381,7 +382,7 @@ public class CloseBlueAuto extends LinearOpMode {
                             flySpeed = flySpeedTarget;
                             motifOn = true;
 
-                            timeout = runtime.milliseconds()+500;
+//                            timeout = runtime.milliseconds()+500;
                             subState++;
                         }
                         //READ MOTIF is subState 1
@@ -407,7 +408,7 @@ public class CloseBlueAuto extends LinearOpMode {
                             subState++;
                         }
                         else if(subState==1){
-                            follower.followPath(pickupPath1[1],0.5,false);
+                            follower.followPath(pickupPath1[1],0.3,false);
                             intakeOn = true;
 
                             subState++;
@@ -425,7 +426,8 @@ public class CloseBlueAuto extends LinearOpMode {
                                 follower.followPath(limelightPath,false);
                                 intakeLimelightOn = true;
 
-                                subState++;                            }
+                                subState++;
+                            }
                             else{
                                 subState+=2;
                             }
@@ -547,6 +549,7 @@ public class CloseBlueAuto extends LinearOpMode {
                         transOn=false;
                         follower.followPath(moveScore);
                         pathState++;
+                        flySpeed=0;
                         running=false;
                         break;
                 }
@@ -649,7 +652,8 @@ public class CloseBlueAuto extends LinearOpMode {
                     spState = SpindexerState.FIND_EMPTY_SLOT;
                     initIntake = false;
                 }
-                if(SPINDEXER_POSITIONS[slotToIndex(spindexerIndex)]!='n'||!follower.isBusy()){
+//                if(SPINDEXER_POSITIONS[slotToIndex(spindexerIndex)]!='n'||!follower.isBusy()){
+                if(!follower.isBusy()){
                     follower.breakFollowing();
                     intakeLimelightOn=false;
                     initIntake=true;
@@ -675,7 +679,7 @@ public class CloseBlueAuto extends LinearOpMode {
             }
             //endregion
 
-            //region SPINDEXER
+            //region CAROUSEL
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
             updateSpindexerPID(targetAngle, dtSec);
             //endregion
@@ -683,9 +687,9 @@ public class CloseBlueAuto extends LinearOpMode {
             //region AUTO SHOOTING
             if(autoShootOn&&!follower.isBusy()&&runtime.milliseconds()>timeout){
                 intake.setPower(0);
+                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+//                if(shootingState==0&&avgSpeed > flySpeedTarget * 0.94 && avgSpeed < flySpeedTarget * 1.08){
                 if(shootingState==0){
-                    double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-                    if(avgSpeed < flySpeedTarget * 0.94 || avgSpeed > flySpeedTarget * 1.08) break;
                     int greenIn=-1;
                     for(int i=0;i<3;i++){
                         if(savedBalls[i]=='g'){
@@ -758,6 +762,7 @@ public class CloseBlueAuto extends LinearOpMode {
             //region TELEMETRY
             if(!running) telemetry.addLine("Done!");
             telemetry.addData("path state", pathState);
+            telemetry.addData("sub state",subState);
             telemetry.addData("shooting state",shootingState);
             telemetry.addData("x", follower.getPose().getX());
             telemetry.addData("y", follower.getPose().getY());
@@ -1059,6 +1064,9 @@ public class CloseBlueAuto extends LinearOpMode {
                 .addPath(new BezierLine(follower.getPose(),ballPose))
                 .setLinearHeadingInterpolation(follower.getPose().getHeading(),ballPose.getHeading())
                 .build();
+    }
+    private Pose limelightPose(){
+        return new Pose();
     }
 
     private boolean spindexerFull(){
