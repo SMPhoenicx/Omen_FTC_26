@@ -57,7 +57,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
  */
 
 @TeleOp(name="Limelight Mode", group="Iterative OpMode")
-
+@Disabled
 public class MainOpMode extends OpMode
 {
     //region HARDWARE DECLARATIONS

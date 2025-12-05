@@ -54,6 +54,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @TeleOp(name="FacingGoalOpMode", group = "Concept")
+@Disabled
 public class FaceGoalOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
