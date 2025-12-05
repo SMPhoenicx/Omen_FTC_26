@@ -141,8 +141,6 @@ public class NeuralDetector extends LinearOpMode {
         double ballTx=0;
         double ballTy=0;
         double lastBallTracking=0;
-        boolean trackingBall=false;
-        boolean ballFound = false;
 
         // Drive Variables
         double drive = 0;
@@ -205,8 +203,6 @@ public class NeuralDetector extends LinearOpMode {
                 LLResultTypes.DetectorResult maxDetected = detector.get(maxAreaIndex);
                 ballTx = maxDetected.getTargetXDegrees();
                 ballTy = maxDetected.getTargetYDegrees()+ballYoffset;
-                ballFound = true;
-                lastBallTracking=runtime.milliseconds();
 
                 telemetry.addData("# of balls detected",detector.size());
                 telemetry.addData("Closest ID",maxDetected.getClassId());
@@ -214,7 +210,6 @@ public class NeuralDetector extends LinearOpMode {
                 telemetry.addData("Ball offset from camera","X: %.3f Y: %.3f",ballTx,ballTy);
             } else {
                 telemetry.addData("# of balls detected",0);
-                ballFound=false;
                 ballTx=0;
                 ballTy=0;
             }

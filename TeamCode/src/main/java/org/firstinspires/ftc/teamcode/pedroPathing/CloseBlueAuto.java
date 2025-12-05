@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.pedroPathing;
 
+import android.util.Size;
+
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
@@ -20,7 +22,21 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.teamcode.MainBlueOpMode;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Autonomous(name="Close Blue Auto", group="Robot")
 public class CloseBlueAuto extends LinearOpMode {
@@ -33,7 +49,7 @@ public class CloseBlueAuto extends LinearOpMode {
     private Pose[] pickup1 = new Pose[3];
     private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
-    private PathChain obeliskPath, scorePath0, scorePath1, scorePath2, scorePath3, moveScore;
+    private PathChain obeliskPath, scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath;
     private PathChain[] pickupPath1 = new PathChain[2];
     private PathChain[] pickupPath2 = new PathChain[2];
     private PathChain[] pickupPath3 = new PathChain[2];
@@ -62,10 +78,44 @@ public class CloseBlueAuto extends LinearOpMode {
     private NormalizedColorSensor color = null;
     //endregion
 
+    //region VISION SYSTEM
+    // AprilTag Configuration
+    private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
+    private AprilTagDetection desiredTag;
+
+    // FTC Vision Portal
+    private VisionPortal visionPortal;
+    private AprilTagProcessor aprilTag;
+
+    // Tracking State
+    private boolean facingGoal = false;
+    private double lastKnownBearing = 0;
+    private double lastKnownRange = 0;
+    private long lastDetectionTime = 0;
+    private static final long PREDICTION_TIMEOUT = 500;
+    private double txOffset = 0;
+    private double distCamOffset = 0;
+
+    // Heading PID
+    private double lastHeadingError = 0;
+    private ElapsedTime pidTimer = new ElapsedTime();
+    double TURN_P = 0.06;
+    double TURN_D = 0.002;
+    final double TURN_GAIN = 0.02;
+    final double MAX_AUTO_TURN = 0.4;
+    private double KballAngle = 0.67287181376;
+    private double Kball = 0.6846;
+    private double ballYoffset = 35;
+    //limelight path
+    private double ballX;
+    private double ballY;
+    private double ballHeading;
+    //endregion
+
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 9.0;
-    double flyKi = 1.5;
+    double flyKi = 1.4;
     double flyKd = 3.0;
     double flyKiOffset = 0.0;
     //endregion
@@ -94,52 +144,77 @@ public class CloseBlueAuto extends LinearOpMode {
     private double hoodOffset = 0;
     //endregion
 
-    //region CAROUSEL SYSTEM
-    // Carousel PIDF Constants
-    private double pidKp = 0.0057;
-    private double pidKi = 0.00166;
-    private double pidKd = 0.00002/1000;
-    private double pidKf = 0.0;
+    //region SPINDEXER SYSTEM
+    // PIDF Constants
+    private double pidKp = 0.010;
+    private double pidKi = 0.000;//6;
+    private double pidKd = 0.000;//5/1000;
+    private double pidKf = 0.0001;
 
-    // Carousel PID State
+    // PID State
     private double integral = 0.0;
     private double lastError = 0.0;
     private double integralLimit = 500.0;
     private double pidLastTimeMs = 0.0;
 
-    // Carousel Control Parameters
+    // Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
 
-    // Carousel Positions (6 presets, every 60 degrees)
-    // 57, 177, and 297 face the intake; others face the transfer
-    private final double[] CAROUSEL_POSITIONS = {57.0, 117.0, 177.0, 237.0, 297.0, 357.0};
-    private int carouselIndex = 0;
+    // Position Presets (6 slots)
+    private final double[] SPINDEXER_POSITIONS = {340.0, 40.0, 100.0, 160.0, 220.0, 280.0};
+    private int spindexerIndex = 0;
+    private int prevSpindexerIndex = 0;
 
-    // Ball Storage Tracking
-    // 'n' = none (empty), 'p' = purple, 'g' = green
+    // Ball Storage Tracking ('n','p','g')
     private char[] savedBalls = {'g', 'p', 'p'};
     int greenPos=0;
+
+    // Auto-intake State Machine
+    private enum SpindexerState {
+        IDLE,
+        FIND_EMPTY_SLOT,
+        ROTATE_TO_SLOT,
+        WAIT_FOR_SETTLE,
+        WAIT_FOR_BALL
+    }
+
+    private SpindexerState spState = SpindexerState.IDLE;
+    private int currentSlot = -1;
+    private long settleStartMs = 0;
+
+    // Ball detection thresholds
+    private static final float BALL_ALPHA_ON  = 0.20f;
+    private static final float BALL_ALPHA_OFF = 0.13f;
+
+    private boolean ballPresentLatched = false;
+
+    // Runtime Spindexer Vars
+    private double spindexerAngleDeg = 0.0;
+    private double spindexerErrorDeg = 0.0;
+    private double spindexerOutput = 0.0;
+    private boolean spindexerAtTarget = false;
+    private double lastColorRead = 0;
     //endregion
 
     public void createPoses(){
         startPose = new Pose(144-121,121,Math.toRadians(180-125));
-        obelisk = new Pose(144-85,85,Math.toRadians(180-135));
+        obelisk = new Pose(144-85,85,Math.toRadians(180));
 
         pickup1[0] = new Pose(144-94,82.5,Math.toRadians(180));
         pickup1[1] = new Pose(144-123,82.5,Math.toRadians(180));
-        pickup1[2] = new Pose(144-123,85,Math.toRadians(180-45));
+        pickup1[2] = new Pose(144-100,82.5,Math.toRadians(180));
 
         pickup2[0] = new Pose(144-94,58,Math.toRadians(180));
         pickup2[1] = new Pose(144-126,58,Math.toRadians(180));
-        pickup2[2] = new Pose(144-116,57,Math.toRadians(180-45));
+        pickup2[2] = new Pose(144-100,58,Math.toRadians(180));
 
         pickup3[0] = new Pose(144-94,33,Math.toRadians(180));
         pickup3[1] = new Pose(144-126,33,Math.toRadians(180));
-        pickup3[2] = new Pose(144-116,32,Math.toRadians(180-45));
+        pickup3[2] = new Pose(144-100,33,Math.toRadians(180));
 
-        shoot1 = new Pose(144-90,90,Math.toRadians(180-45));
-        movePoint = new Pose(144-114,77,Math.toRadians(180-45));
+        shoot1 = new Pose(144-90,90,Math.toRadians(180));
+        movePoint = new Pose(144-114,77,Math.toRadians(180));
     }
 
     public void createPaths(){
@@ -212,11 +287,28 @@ public class CloseBlueAuto extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         //region MAIN VARS
         int pathState = 0;
+        int subState = 0;
+
+        // Camera State
+        boolean targetFound = false;
+
         int shootingState = 5;
         int flySpeed = 0;
         boolean running = true;
-        boolean transOn = false;
         int flySpeedTarget = 1208;
+
+        //Ball tracking
+        double ballTx=0;
+        double ballTy=0;
+
+        //BOOLEANS like stuff on or off
+        boolean motifOn = false;
+        boolean transOn = false;
+        boolean autoShootOn = false;
+        boolean intakeOn = false;
+        boolean initIntake = true;
+        boolean intakeLimelightOn = false;
+        boolean createLimelightPathOn = false;
         //endregion
 
         //region HARDWARE INFO
@@ -230,7 +322,6 @@ public class CloseBlueAuto extends LinearOpMode {
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
         hood = hardwareMap.get(CRServo.class,"hood");
-//        trans =  hardwareMap.get(Servo.class,"t1");
 
         //ENCODERS
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
@@ -238,13 +329,6 @@ public class CloseBlueAuto extends LinearOpMode {
 
         //COLOR SENSOR
         color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
-
-        //TOGGLESERVO
-//40, 1150, 270
-        //50, 1200, 270
-        //60, 1250, 270
-        //70, 1350, 285
-        //100 1450, 0.591
 
         //MODES
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -257,15 +341,20 @@ public class CloseBlueAuto extends LinearOpMode {
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
+        //endregion
 
+        //region CAMERA INIT
         //LIMELIGHT
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
         limelight.setPollRateHz(100);
         limelight.start();
-        limelight.pipelineSwitch(0);
+        limelight.pipelineSwitch(1);
+
+        initAprilTag();
+        setManualExposure(4, 200);
         //endregion
 
-        //region INITIALIZE STUFF
+        //region INITIALIZE PEDRO
         createPoses();
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
@@ -282,157 +371,182 @@ public class CloseBlueAuto extends LinearOpMode {
             follower.update();
             pidLastTimeMs = runtime.milliseconds();
 
-//            if(pathState>=9) pathState=500;
-
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
                 switch(pathState){
                     //region CYCLE ZERO (READ MOTIF)
                     case 0:
-                        follower.followPath(obeliskPath,false);
-                        pathState++;
-                        flySpeed = flySpeedTarget-55;
-                        flyKi += 0.3;
-                        timeout = runtime.milliseconds()+500;
+                        if(subState==0){
+                            follower.followPath(obeliskPath,false);
+                            flySpeed = flySpeedTarget;
+                            motifOn = true;
+
+                            timeout = runtime.milliseconds()+500;
+                            subState++;
+                        }
+                        //READ MOTIF is subState 1
+                        else if(subState==2){
+                            follower.followPath(scorePath0,true);
+                            autoShootOn = true;
+                            shootingState=0;
+
+                            subState++;
+                        }
+                        //AUTO SHOOTING is subState 3, resets subState, and increments pathState
                         break;
-                    //CASE 1 is reading motif
-                    case 2:
-                        follower.followPath(scorePath0,true);
-                        pathState++;
-                        shootingState=0;
-                        break;
-                    //CASE 3 is shooting
                     //endregion
 
                     //region CYCLE ONE
-                    case 4:
-                        flySpeed = 0;
-                        flyKi -= 0.3;
-                        transOn=false;
-                        intake.setPower(1);
-                        follower.followPath(pickupPath1[0],true);
-                        pathState++;
+                    case 1:
+                        if(subState==0){
+                            follower.followPath(pickupPath1[0],false);
+                            flySpeed = 0;
+                            transOn=false;
+                            intake.setPower(1);
+
+                            subState++;
+                        }
+                        else if(subState==1){
+                            follower.followPath(pickupPath1[1],0.5,false);
+                            intakeOn = true;
+
+                            subState++;
+                        }
+                        //INTAKE is subState 2
+                        else if(subState==3){
+                            follower.followPath(pickupPath1[2],false);
+                            createLimelightPathOn = true;
+
+                            subState++;
+                        }
+                        else if(subState==4){
+                            createLimelightPathOn = false;
+                            if(limelightPath!=null&&!spindexerFull()) {
+                                follower.followPath(limelightPath,false);
+                                intakeLimelightOn = true;
+
+                                subState++;                            }
+                            else{
+                                subState+=2;
+                            }
+                        }
+                        //INTAKE LIMELIGHT is subState 5
+                        else if(subState==6){
+                            follower.followPath(scorePath1,true);
+                            intake.setPower(0);
+                            limelightPath=null;
+                            flySpeed = flySpeedTarget;
+                            autoShootOn = true;
+                            shootingState=0;
+
+                            subState++;
+                        }
+                        //AUTO SHOOTING is subState 6, resets subState, and increments pathState
                         break;
-                    case 5:
-                        follower.followPath(pickupPath1[1],0.2,true);
-                        pathState++;
-                        break;
-                    //CASE 6 is intaking
-                    case 7:
-                        follower.followPath(scorePath1,true);
-                        flySpeed = flySpeedTarget;
-                        transOn = true;
-                        pathState++;
-                        shootingState=0;
-                        break;
-                    //CASE 8 is shooting
                     //endregion
 
                     //region CYCLE TWO
-                    case 9:
-                        flySpeed = 0;
-                        transOn=false;
-                        intake.setPower(1);
-                        follower.followPath(pickupPath2[0],true);
-                        pathState++;
+                    case 2:
+                        if(subState==0){
+                            follower.followPath(pickupPath2[0],false);
+                            flySpeed = 0;
+                            transOn=false;
+                            intake.setPower(1);
+
+                            subState++;
+                        }
+                        else if(subState==1){
+                            follower.followPath(pickupPath2[1],0.5,false);
+                            intakeOn = true;
+
+                            subState++;
+                        }
+                        //INTAKE is subState 2
+                        else if(subState==3){
+                            follower.followPath(pickupPath2[2],false);
+                            createLimelightPathOn = true;
+
+                            subState++;
+                        }
+                        else if(subState==4){
+                            createLimelightPathOn = false;
+                            if(limelightPath!=null&&!spindexerFull()) {
+                                follower.followPath(limelightPath,false);
+                                intakeLimelightOn = true;
+
+                                subState++;                            }
+                            else{
+                                subState+=2;
+                            }
+                        }
+                        //INTAKE LIMELIGHT is subState 5
+                        else if(subState==6){
+                            follower.followPath(scorePath2,true);
+                            intake.setPower(0);
+                            limelightPath=null;
+                            flySpeed = flySpeedTarget;
+                            autoShootOn = true;
+                            shootingState=0;
+
+                            subState++;
+                        }
+                        //AUTO SHOOTING is subState 6, resets subState, and increments pathState
                         break;
-                    case 10:
-                        follower.followPath(pickupPath2[1],0.2,true);
-                        pathState++;
-                        break;
-                    //CASE 11 is intaking
-                    case 12:
-                        follower.followPath(scorePath2,true);
-                        flySpeed = flySpeedTarget;
-                        transOn = true;
-                        pathState++;
-                        shootingState=0;
-                        break;
-                    //CASE 13 is shooting
                     //endregion
 
                     //region CYCLE THREE
-                    case 14:
-                        flySpeed = 0;
-                        transOn=false;
-                        intake.setPower(1);
-                        follower.followPath(pickupPath3[0],true);
-                        pathState++;
+                    case 3:
+                        if(subState==0){
+                            follower.followPath(pickupPath3[0],false);
+                            flySpeed = 0;
+                            transOn=false;
+                            intake.setPower(1);
+
+                            subState++;
+                        }
+                        else if(subState==1){
+                            follower.followPath(pickupPath3[1],0.5,false);
+                            intakeOn = true;
+
+                            subState++;
+                        }
+                        //INTAKE is subState 2
+                        else if(subState==3){
+                            follower.followPath(pickupPath3[2],false);
+                            createLimelightPathOn = true;
+
+                            subState++;
+                        }
+                        else if(subState==4){
+                            createLimelightPathOn = false;
+                            if(limelightPath!=null&&!spindexerFull()) {
+                                follower.followPath(limelightPath,false);
+                                intakeLimelightOn = true;
+
+                                subState++;                            }
+                            else{
+                                subState+=2;
+                            }
+                        }
+                        //INTAKE LIMELIGHT is subState 5
+                        else if(subState==6){
+                            follower.followPath(scorePath3,true);
+                            intake.setPower(0);
+                            limelightPath=null;
+                            flySpeed = flySpeedTarget;
+                            autoShootOn = true;
+                            shootingState=0;
+
+                            subState++;
+                        }
+                        //AUTO SHOOTING is subState 6, resets subState, and increments pathState
                         break;
-                    case 15:
-                        follower.followPath(pickupPath3[1],0.2,true);
-                        pathState++;
-                        break;
-                    //CASE 16 is intaking
-                    case 17:
-                        follower.followPath(scorePath3,true);
-                        flySpeed = flySpeedTarget;
-                        transOn = true;
-                        pathState++;
-                        shootingState=0;
-                        break;
-                    //CASE 18 is shooting
                     //endregion
 
-                    case 3:
-                    case 8:
-                    case 13:
-                    case 18:
-                        //region SHOOTING
-                        intake.setPower(0);
-                        if(shootingState==0){
-                            double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-                            if(avgSpeed < flySpeedTarget * 0.94 || avgSpeed > flySpeedTarget * 1.08) break;
-                            int greenIn=-1;
-                            for(int i=0;i<3;i++){
-                                if(savedBalls[i]=='g'){
-                                    greenIn=i;
-                                }
-                            }
-                            if(greenIn==-1){
-                                for(int i=0;i<3;i++){
-                                    if(savedBalls[i]=='n'){
-                                        greenIn=i;
-                                    }
-                                }
-                            }
-                            if(greenIn==-1) greenIn=0;
-
-                            int diff = (greenIn + greenPos) % 3;
-                            if(diff==0) carouselIndex=4;
-                            else if(diff==1) carouselIndex=0;
-                            else carouselIndex=2;
-                            timeout=runtime.milliseconds()+1000;
-                            shootingState++;
-                        }
-                        else if(shootingState==1){
-                            transOn = true;
-                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+500;
-                            shootingState++;
-                        }
-                        else if(shootingState==2){
-                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                            timeout=runtime.milliseconds()+500;
-                            shootingState++;
-                        }
-                        else if(shootingState==3){
-                            carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                            shootingState++;
-                            pathState++;
-                            timeout=runtime.milliseconds()+500;
-                            savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
-                        }
-                        //endregion
-                        break;
-
-                    //end of auto
-                    case 19:
+                    case 4:
                         transOn=false;
                         follower.followPath(moveScore);
                         pathState++;
-                        break;
-                    default:
                         running=false;
                         break;
                 }
@@ -441,25 +555,108 @@ public class CloseBlueAuto extends LinearOpMode {
             }
             //endregion
 
-            //region INTAKE
-            if((pathState==6||pathState==11||pathState==16)&&runtime.milliseconds()>timeout){
-                if(getDetectedColor()!='n'&&savedBalls[carouselIndex/2]=='n'){//detect one ball intake
-                    savedBalls[carouselIndex/2]=getDetectedColor();
-                    carouselIndex = (carouselIndex-2 + CAROUSEL_POSITIONS.length) % CAROUSEL_POSITIONS.length;
-                    timeout = runtime.milliseconds()+500;
+            //region COLOR SENSOR
+            char detectedColor = getDetectedColor();
+
+            if (spindexerAtTarget && runtime.milliseconds() - lastColorRead > 40) {
+                int slot = indexToSlot(spindexerIndex);
+                if (slot != -1) {
+                    savedBalls[slot] = detectedColor;  // 'n', 'g', or 'p'
+                    lastColorRead = runtime.milliseconds();
                 }
-                //if spindexer is full
-                boolean full = true;
-                for(int i=0;i<3;i++){
-                    if(savedBalls[i]=='n'){
-                        full=false;
-                        break;
+            }
+            //endregion
+
+            //region LIMELIGHT VISION PROCESSING
+            if(createLimelightPathOn){
+                LLResult result = limelight.getLatestResult();
+                if (result != null && result.isValid()) {
+
+                    List <LLResultTypes.DetectorResult> detector = result.getDetectorResults();
+                    double maxArea = 0;
+                    int maxAreaIndex=0;
+
+                    for (int i=0;i<detector.size();i++) { //checks all results of detector
+                        LLResultTypes.DetectorResult detected = detector.get(i);
+
+                        if(detected.getTargetArea()>maxArea) {
+                            maxArea=detected.getTargetArea();
+                            maxAreaIndex=i;
+                        }
                     }
+                    LLResultTypes.DetectorResult maxDetected = detector.get(maxAreaIndex);
+                    ballTx = maxDetected.getTargetXDegrees();
+                    ballTy = maxDetected.getTargetYDegrees()+ballYoffset;
+
+                    telemetry.addData("# of balls detected",detector.size());
+                    telemetry.addData("Closest ID",maxDetected.getClassId());
+                    telemetry.addData("Closest ball",maxDetected.getClassName());
+                    telemetry.addData("Ball offset from camera","X: %.3f Y: %.3f",ballTx,ballTy);
+                    pathToBall(ballTx,ballTy);
+                } else {
+                    telemetry.addData("# of balls detected",0);
+                    ballTx=0;
+                    ballTy=0;
                 }
-                if(full||!follower.isBusy()){
+            }
+            //endregion
+
+            //region READ MOTIF
+            if(motifOn&&timeout<runtime.milliseconds()){
+                int april = readMotif();
+                if(april!=-1) {
+                    if (april == 21) {
+                        greenPos = 0;
+                    } else if (april == 22) {
+                        greenPos = 1;
+                    } else if (april == 23) {
+                        greenPos = 2;
+                    }
+                    motifOn=false;
                     follower.breakFollowing();
-                    pathState++;
-//                    intake.setPower(0);
+                    subState++;
+                }
+                else if(!follower.isBusy()){
+                    motifOn=false;
+                    follower.breakFollowing();
+                    subState++;
+                }
+            }
+            //endregion
+
+            //region INTAKE
+            if(intakeOn&&runtime.milliseconds()>timeout){
+                if(initIntake){
+                    spState = SpindexerState.FIND_EMPTY_SLOT;
+                    initIntake = false;
+                }
+
+                if(spindexerFull()||!follower.isBusy()){
+                    follower.breakFollowing();
+                    intakeOn = false;
+                    initIntake = true;
+                    spState = SpindexerState.IDLE;
+                    currentSlot = -1;
+
+                    subState++;
+                }
+            }
+            //endregion
+
+            //region INTAKE LIMELIGHT
+            if(intakeLimelightOn&&runtime.milliseconds()>timeout){
+                if(initIntake){
+                    spState = SpindexerState.FIND_EMPTY_SLOT;
+                    initIntake = false;
+                }
+                if(SPINDEXER_POSITIONS[slotToIndex(spindexerIndex)]!='n'||!follower.isBusy()){
+                    follower.breakFollowing();
+                    intakeLimelightOn=false;
+                    initIntake=true;
+                    spState = SpindexerState.IDLE;
+                    currentSlot = -1;
+
+                    subState++;
                 }
             }
             //endregion
@@ -472,28 +669,68 @@ public class CloseBlueAuto extends LinearOpMode {
             updateHoodPID(hoodAngle + hoodOffset, dtSec);
             //endregion
 
-            //region CAROUSEL
-            double targetAngle = CAROUSEL_POSITIONS[carouselIndex];
-            updateCarouselPID(targetAngle, dtSec);
+            //region UPDATE SPINDEXER INTAKE
+            if(intakeOn||intakeLimelightOn){
+                updateSpindexerAutoIntake();
+            }
             //endregion
 
-            //region READ MOTIF
-            if(pathState==1&&timeout<runtime.milliseconds()){
-                int april = readMotif();
-                if(april!=-1) {
-                    if (april == 21) {
-                        greenPos = 0;
-                    } else if (april == 22) {
-                        greenPos = 1;
-                    } else if (april == 23) {
-                        greenPos = 2;
+            //region SPINDEXER
+            double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
+            updateSpindexerPID(targetAngle, dtSec);
+            //endregion
+
+            //region AUTO SHOOTING
+            if(autoShootOn&&!follower.isBusy()&&runtime.milliseconds()>timeout){
+                intake.setPower(0);
+                if(shootingState==0){
+                    double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+                    if(avgSpeed < flySpeedTarget * 0.94 || avgSpeed > flySpeedTarget * 1.08) break;
+                    int greenIn=-1;
+                    for(int i=0;i<3;i++){
+                        if(savedBalls[i]=='g'){
+                            greenIn=i;
+                        }
                     }
-                    pathState++;
-                    follower.breakFollowing();
+                    if(greenIn==-1){
+                        for(int i=0;i<3;i++){
+                            if(savedBalls[i]=='n'){
+                                greenIn=i;
+                            }
+                        }
+                    }
+                    if(greenIn==-1) greenIn=0;
+
+                    int diff = (greenIn + greenPos) % 3;
+                    if(diff==0) spindexerIndex=4;
+                    else if(diff==1) spindexerIndex=0;
+                    else spindexerIndex=2;
+
+                    timeout=runtime.milliseconds()+1000;
+                    shootingState++;
                 }
-                else if(!follower.isBusy()){
+                else if(shootingState==1){
+                    transOn = true;
+                    spindexerIndex = (spindexerIndex-2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+
+                    timeout=runtime.milliseconds()+500;
+                    shootingState++;
+                }
+                else if(shootingState==2){
+                    spindexerIndex = (spindexerIndex-2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+
+                    timeout=runtime.milliseconds()+500;
+                    shootingState++;
+                }
+                else if(shootingState==3){
+                    spindexerIndex = (spindexerIndex-2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+                    savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
+                    autoShootOn = false;
+
+                    timeout=runtime.milliseconds()+500;
+                    shootingState++;
+                    subState=0;
                     pathState++;
-                    follower.breakFollowing();
                 }
             }
             //endregion
@@ -527,12 +764,13 @@ public class CloseBlueAuto extends LinearOpMode {
             telemetry.addData("heading", follower.getPose().getHeading());
             telemetry.addData("Green Position",greenPos);
             telemetry.addData("actual fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
-            telemetry.addData("carousel pos",carouselIndex);
+            telemetry.addData("spindexer pos",spindexerIndex);
             telemetry.update();
             //endregion
         }
     }
 
+    //region HELPER METHODS
     private char getDetectedColor(){
         NormalizedRGBA colors = color.getNormalizedColors();
         float nRed = colors.red/colors.alpha;
@@ -548,7 +786,115 @@ public class CloseBlueAuto extends LinearOpMode {
         return 'n';
     }
 
-    private void updateCarouselPID(double targetAngle, double dt) {
+    public void spinClock() {
+        prevSpindexerIndex = spindexerIndex;
+        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+        spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+    }
+    public void spinCounterClock() {
+        prevSpindexerIndex = spindexerIndex;
+        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+        spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
+    }
+
+    private int indexToSlot(int index) {
+        switch (index) {
+            case 0: return 0;
+            case 2: return 1;
+            case 4: return 2;
+            default: return -1;
+        }
+    }
+
+    private int slotToIndex(int slot) {
+        switch (slot) {
+            case 0: return 0;
+            case 1: return 2;
+            case 2: return 4;
+            default: return -1;
+        }
+    }
+    private void updateSpindexerAutoIntake() {
+        long now = (long) runtime.milliseconds();
+
+        switch (spState) {
+            case IDLE:
+                // Do nothing – spindexer is under manual control.
+                break;
+
+            case FIND_EMPTY_SLOT:
+                currentSlot = -1;
+                // look for first empty slot in savedBalls
+                for (int i = 0; i < savedBalls.length; i++) {
+                    if (savedBalls[i] == 'n') {   // 'n' = empty
+                        currentSlot = i;
+                        break;
+                    }
+                }
+
+                if (currentSlot == -1) {
+                    // No empty slots -> stop auto-intake
+                    spState = SpindexerState.IDLE;
+                } else {
+                    int targetIndex = slotToIndex(currentSlot);
+                    if (targetIndex != -1) {
+                        spindexerIndex = targetIndex;    // tell PID where to go
+                        spState = SpindexerState.ROTATE_TO_SLOT;
+                    } else {
+                        spState = SpindexerState.IDLE;
+                    }
+                }
+                break;
+
+            case ROTATE_TO_SLOT:
+                // PID is already rotating us to SPINDEXER_POSITIONS[spindexerIndex]
+                if (spindexerAtTarget && Math.abs(spindexerOutput) < 1e-3) {
+                    settleStartMs = now;
+                    spState = SpindexerState.WAIT_FOR_SETTLE;
+                }
+                break;
+
+            case WAIT_FOR_SETTLE:
+                // If we drift out of target, go back to ROTATE
+                if (!spindexerAtTarget) {
+                    spState = SpindexerState.ROTATE_TO_SLOT;
+                    break;
+                }
+
+                // Tiny dwell to let vibrations die down
+                if (now - settleStartMs > 40) {   // 40 ms is a good starting point
+                    spState = SpindexerState.WAIT_FOR_BALL;
+                }
+                break;
+
+            case WAIT_FOR_BALL:
+                // Option 1: use distance (alpha) for occupancy
+                boolean occupied = isBallPresent();
+
+                // Option 2: use the color logic you already have:
+                // savedBalls[currentSlot] will flip from 'n' to 'g'/'p'
+//                boolean occupied = (savedBalls[currentSlot] != 'n');
+
+                if (occupied) {
+                    // This slot is now full – go find the next empty one
+                    spState = SpindexerState.FIND_EMPTY_SLOT;
+                }
+                break;
+        }
+    }
+    private boolean isBallPresent() {
+        NormalizedRGBA colors = color.getNormalizedColors();
+        float a = colors.alpha;
+
+        if (!ballPresentLatched && a > BALL_ALPHA_ON) {
+            ballPresentLatched = true;   // turn ON when we cross the high threshold
+        } else if (ballPresentLatched && a < BALL_ALPHA_OFF) {
+            ballPresentLatched = false;  // turn OFF when we drop below the low threshold
+        }
+
+        return ballPresentLatched;
+    }
+    private void updateSpindexerPID(double targetAngle, double dt) {
         double ccwOffset = -6.0;
         // read angles 0..360
         double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
@@ -565,6 +911,10 @@ public class CloseBlueAuto extends LinearOpMode {
         }
         // compute shortest signed error [-180,180]
         double error = -angleError(compensatedTarget, angle);
+
+        //store for outside use
+        spindexerAngleDeg = angle;
+        spindexerErrorDeg = error;
 
         // integral with anti-windup
         integral += error * dt;
@@ -589,6 +939,10 @@ public class CloseBlueAuto extends LinearOpMode {
             integral *= 0.2;
         }
 
+        //store for outside use
+        spindexerOutput = out;
+        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg);
+
         // apply powers (flip one if your servo is mirrored - change sign if needed)
         spin1.setPower(out);
         spin2.setPower(out);
@@ -597,7 +951,7 @@ public class CloseBlueAuto extends LinearOpMode {
         lastError = error;
 
         // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("Carousel Target", "%.1f°", targetAngle);
+        telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
 
     }
 
@@ -647,20 +1001,18 @@ public class CloseBlueAuto extends LinearOpMode {
     }
 
     private int readMotif(){
-        LLResult result = limelight.getLatestResult();
-        int numTags = 0;
-        int lastTagIndex = 0;
-        if (result != null && result.isValid()) {
-            List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
-            for (LLResultTypes.FiducialResult fiducial : fiducials) {
-                if (fiducial.getFiducialId() == 21||fiducial.getFiducialId() == 22||fiducial.getFiducialId() == 23) {
+        List<AprilTagDetection> currentDetections = aprilTag.getDetections();
+        int numTags=0;
+        int lastTagNum = 0;
+        for (AprilTagDetection detection : currentDetections) {
+            if (detection.metadata != null) {
+                if (detection.id == 21||detection.id == 22||detection.id == 23) {
                     numTags++;
+                    lastTagNum=detection.id;
                 }
             }
-            if(numTags==1){
-                return fiducials.get(lastTagIndex).getFiducialId();
-            }
         }
+        if(numTags==1) return lastTagNum;
         return -1;
     }
     private double clamp(double v, double lo, double hi) {
@@ -679,4 +1031,132 @@ public class CloseBlueAuto extends LinearOpMode {
         if (error < -180) error += 360;
         return error;
     }
+
+    private void pathToBall(double tx,double ty){
+        double hypotenuse = Math.sqrt((tx*tx) + (ty*ty));
+        double angle = Math.atan(tx/(ty-5));
+
+        ballX = (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
+        ballY = (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
+        if(ty>50){
+            ballX = 0;
+            ballY = 0;
+        }else if(hypotenuse>40){
+            ballX *= 1.7;
+            ballY *= 1.7;
+        }else if(hypotenuse>30){
+            ballX *= 1.2;
+            ballY *= 1.2;
+        }
+
+        ballX += follower.getPose().getX();
+        ballY += follower.getPose().getY();
+
+        ballHeading = follower.getHeading()+(-angle*KballAngle);//in radians
+        Pose ballPose = new Pose(ballX,ballY,ballHeading);
+
+        limelightPath = follower.pathBuilder()
+                .addPath(new BezierLine(follower.getPose(),ballPose))
+                .setLinearHeadingInterpolation(follower.getPose().getHeading(),ballPose.getHeading())
+                .build();
+    }
+
+    private boolean spindexerFull(){
+        for(int i=0;i<3;i++){
+            if(savedBalls[i]=='n'){
+                return false;
+            }
+        }
+        return true;
+    }
+    private void initAprilTag() {
+
+        Position cameraPosition = new Position(
+                DistanceUnit.INCH,
+                0, //x, right +, left -
+                4, //y, forward +, back -
+                12.5, //z up + down -
+                0
+        );
+
+        YawPitchRollAngles orientation = new YawPitchRollAngles(
+                AngleUnit.DEGREES,
+                0, //yaw, left and right
+                -70, //pitch, forward, back
+                180, //roll, orientation
+                0
+        );
+        // Create the AprilTag processor.
+        aprilTag = new AprilTagProcessor.Builder()
+                //.setDrawAxes(false)
+                //.setDrawCubeProjection(false)
+                .setDrawTagOutline(true)
+                .setCameraPose(cameraPosition, orientation)
+                //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
+                .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary())
+                .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
+                .setLensIntrinsics(904.848699568, 904.848699568, 658.131998572, 340.91602987)
+
+                .build();
+
+        aprilTag.setDecimation(4);
+
+        // Create the vision portal by using a builder.
+        visionPortal = new VisionPortal.Builder()
+                .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
+                .addProcessor(aprilTag)
+                .setCameraResolution(new Size(1280, 720))
+                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
+                .build();
+    }
+
+    private void setManualExposure(int exposureMS, int gain) {
+
+        if (visionPortal == null) {
+            return;
+        }
+
+        // Make sure camera is streaming before we try to set the exposure controls
+        if (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING) {
+            telemetry.addData("Camera", "Waiting");
+            telemetry.update();
+            while (!isStopRequested() && (visionPortal.getCameraState() != VisionPortal.CameraState.STREAMING)) {
+                sleep(20);
+            }
+            telemetry.addData("Camera", "Ready");
+            telemetry.update();
+        }
+
+        // Set camera controls unless we are stopping.
+        if (!isStopRequested())
+        {
+            ExposureControl exposureControl = visionPortal.getCameraControl(ExposureControl.class);
+            if (exposureControl.getMode() != ExposureControl.Mode.Manual) {
+                exposureControl.setMode(ExposureControl.Mode.Manual);
+                sleep(50);
+            }
+            exposureControl.setExposure((long)exposureMS, TimeUnit.MILLISECONDS);
+            sleep(20);
+            GainControl gainControl = visionPortal.getCameraControl(GainControl.class);
+            gainControl.setGain(gain);
+            sleep(20);
+        }
+    }
+
+    private void adjustDecimation(double range) {
+        int newDecimation;
+
+        if (range > 90) {
+            newDecimation = 3;
+        } else if (range > 50) {
+            newDecimation = 3;
+        } else {
+            newDecimation = 4;
+        }
+
+        aprilTag.setDecimation(newDecimation);
+        telemetry.addData("Decimation: ", "%d", newDecimation);
+
+    }
+    //endregion
 }
