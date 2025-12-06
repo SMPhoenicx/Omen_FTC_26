@@ -70,13 +70,17 @@ public class CloseBlueAuto extends LinearOpMode {
     private CRServo spin2 = null;
     private Servo led = null;
     private CRServo hood = null;
+    private CRServo turret1 = null;
+    private CRServo turret2 = null;
 
     // ENCODERS
     private AnalogInput spinEncoder;
     private AnalogInput hoodEncoder;
+    private AnalogInput turretEncoder;
 
     //COLOR
-    private NormalizedColorSensor color = null;
+    private NormalizedColorSensor color1 = null;
+    private NormalizedColorSensor color2 = null;
     //endregion
 
     //region VISION SYSTEM
@@ -198,12 +202,36 @@ public class CloseBlueAuto extends LinearOpMode {
     private double lastColorRead = 0;
     //endregion
 
+    //region TURRET SYSTEM
+    // PIDF Constants
+    private double tuKp = 0.0055;
+    private double tuKi = 0.000;
+    private double tuKd = 0.000048;
+    private double tuKf = 0.0;
+
+
+    // PID State
+    private double tuIntegral = 0.0;
+    private double tuLastError = 0.0;
+    private double tuIntegralLimit = 500.0;
+
+    // Control Parameters
+    private final double tuToleranceDeg = 2.0;
+    private final double tuDeadband = 0.03;
+
+    // Turret Position
+    private double tuPos = 0;
+
+    // Simple low-pass on the camera error to kill jitter
+    private double filteredHeadingError = 0.0;
+    //endregion
+
     public void createPoses(){
         startPose = new Pose(144-121,121,Math.toRadians(180-125));
         obelisk = new Pose(144-100,100,Math.toRadians(180));
 
         pickup1[0] = new Pose(144-94,82.5,Math.toRadians(180));
-        pickup1[1] = new Pose(144-120,82.5,Math.toRadians(180));
+        pickup1[1] = new Pose(144-118,82.5,Math.toRadians(180));
         pickup1[2] = new Pose(144-100,82.5,Math.toRadians(180));
 
         pickup2[0] = new Pose(144-94,58,Math.toRadians(180));
@@ -323,13 +351,17 @@ public class CloseBlueAuto extends LinearOpMode {
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
         hood = hardwareMap.get(CRServo.class,"hood");
+        turret1 = hardwareMap.get(CRServo.class, "tu1");
+        turret2 = hardwareMap.get(CRServo.class, "tu2");
 
         //ENCODERS
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
         hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
+        turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
 
         //COLOR SENSOR
-        color = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
+        color1 = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
+        color2 = hardwareMap.get(NormalizedColorSensor.class,"Color 2");
 
         //MODES
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -362,6 +394,7 @@ public class CloseBlueAuto extends LinearOpMode {
         createPaths();
         //endregion
         hoodOffset=0;
+        tuPos = -20;
 
         //WAIT
         waitForStart();
@@ -382,12 +415,13 @@ public class CloseBlueAuto extends LinearOpMode {
                             flySpeed = flySpeedTarget;
                             motifOn = true;
 
-//                            timeout = runtime.milliseconds()+500;
+                            timeout = runtime.milliseconds()+3000;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
                             follower.followPath(scorePath0,true);
+                            tuPos = 110;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -559,7 +593,7 @@ public class CloseBlueAuto extends LinearOpMode {
             //endregion
 
             //region COLOR SENSOR
-            char detectedColor = getDetectedColor();
+            char detectedColor = getRealColor();
 
             if (spindexerAtTarget && runtime.milliseconds() - lastColorRead > 40) {
                 int slot = indexToSlot(spindexerIndex);
@@ -750,6 +784,10 @@ public class CloseBlueAuto extends LinearOpMode {
             fly2.setVelocity(flySpeed);
             //endregion
 
+            //region TURRET
+            updateTurretPID(tuPos, dtSec);
+            //endregion
+
             //region TRANSFER
             if(transOn){
                 trans.setPower(1);
@@ -776,8 +814,20 @@ public class CloseBlueAuto extends LinearOpMode {
     }
 
     //region HELPER METHODS
-    private char getDetectedColor(){
-        NormalizedRGBA colors = color.getNormalizedColors();
+    private char getRealColor(){
+        char c1 = getDetectedColor(color1);
+        char c2 = getDetectedColor(color2);
+
+        if(c1=='p'||c2=='p'){
+            return 'p';
+        }
+        if(c1=='g'||c2=='g'){
+            return 'g';
+        }
+        return 'n';
+    }
+    private char getDetectedColor(NormalizedColorSensor sensor){
+        NormalizedRGBA colors = sensor.getNormalizedColors();
         float nRed = colors.red/colors.alpha;
         float nGreen = colors.green/colors.alpha;
         float nBlue = colors.blue/colors.alpha;
@@ -888,7 +938,7 @@ public class CloseBlueAuto extends LinearOpMode {
         }
     }
     private boolean isBallPresent() {
-        NormalizedRGBA colors = color.getNormalizedColors();
+        NormalizedRGBA colors = color1.getNormalizedColors();
         float a = colors.alpha;
 
         if (!ballPresentLatched && a > BALL_ALPHA_ON) {
@@ -1003,6 +1053,57 @@ public class CloseBlueAuto extends LinearOpMode {
         telemetry.addData("Hood Actual", "%.1f°", angle);
         telemetry.addData("Hood Error", "%.1f°", error);
         telemetry.addData("Hood Power", "%.3f", out);
+    }
+    private void updateTurretPID(double targetAngle, double dt) {
+        // read angles 0..360
+        double angle = mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
+
+        //raw error
+        double rawError = -angleError(targetAngle, angle);
+
+        //adds a constant term if it's in a certain direction.
+        // we either do this or we change the pid values for each direction.
+        // gonna try and see if simpler method works tho
+        double compensatedTarget = targetAngle;
+        if (rawError < 0) { // moving CCW
+            compensatedTarget = (targetAngle) % 360.0;
+        }
+        // compute shortest signed error [-180,180]
+        double error = -angleError(compensatedTarget, angle);
+
+        // integral with anti-windup
+        tuIntegral += error * dt;
+        tuIntegral = clamp(tuIntegral, -tuIntegralLimit, tuIntegralLimit);
+
+        // derivative
+        double d = (error - tuLastError) / Math.max(dt, 1e-6);
+
+        // PIDF output (interpreted as servo power)
+        double out = tuKp * error + tuKi * tuIntegral + tuKd * d;
+
+        // small directional feedforward to overcome stiction when error significant
+        if (Math.abs(error) > 1.0) out += tuKf * Math.signum(error);
+
+        // clamp to [-1,1] and apply deadband
+        out = Range.clip(out, -1.0, 1.0);
+        if (Math.abs(out) < tuDeadband) out = 0.0;
+
+        // if within tolerance, zero outputs and decay integrator to avoid bumping
+        if (Math.abs(error) <= tuToleranceDeg) {
+            out = 0.0;
+            tuIntegral *= 0.2;
+        }
+
+        // apply powers (flip one if your servo is mirrored - change sign if needed)
+        turret1.setPower(out);
+        turret2.setPower(out);
+
+        // store errors for next derivative calculation
+        tuLastError = error;
+
+        // telemetry for PID (keeps concise, add more if you want)
+        telemetry.addData("Turret Target", "%.1f°", targetAngle);
+
     }
 
     private int readMotif(){
