@@ -115,6 +115,7 @@ public class CloseBlueAuto extends LinearOpMode {
     private double ballX;
     private double ballY;
     private double ballHeading;
+    double limelightWallPos;
     //endregion
 
     //region FLYWHEEL SYSTEM
@@ -230,9 +231,9 @@ public class CloseBlueAuto extends LinearOpMode {
         startPose = new Pose(144-121,121,Math.toRadians(180-125));
         obelisk = new Pose(144-100,100,Math.toRadians(180));
 
-        pickup1[0] = new Pose(144-94,82.5,Math.toRadians(180));
-        pickup1[1] = new Pose(144-118,82.5,Math.toRadians(180));
-        pickup1[2] = new Pose(144-100,82.5,Math.toRadians(180));
+        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
+        pickup1[1] = new Pose(144-118,83,Math.toRadians(180));
+        pickup1[2] = new Pose(144-100,83,Math.toRadians(180));
 
         pickup2[0] = new Pose(144-94,58,Math.toRadians(180));
         pickup2[1] = new Pose(144-126,58,Math.toRadians(180));
@@ -392,6 +393,8 @@ public class CloseBlueAuto extends LinearOpMode {
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
         createPaths();
+
+        limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
         tuPos = -20;
@@ -484,6 +487,7 @@ public class CloseBlueAuto extends LinearOpMode {
                     //region CYCLE TWO
                     case 2:
                         if(subState==0){
+                            limelightWallPos = pickup2[1].getX();
                             follower.followPath(pickupPath2[0],false);
                             flySpeed = 0;
                             transOn=false;
@@ -662,18 +666,17 @@ public class CloseBlueAuto extends LinearOpMode {
             //endregion
 
             //region INTAKE
+            telemetry.addData("ball color",getRealColor());
             if(intakeOn&&runtime.milliseconds()>timeout){
-                if(initIntake){
-                    spState = SpindexerState.FIND_EMPTY_SLOT;
-                    initIntake = false;
+                if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'){//detect one ball intake
+                    savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
+                    spinClock();
+                    timeout = runtime.milliseconds()+500;
                 }
 
                 if(spindexerFull()||!follower.isBusy()){
                     follower.breakFollowing();
                     intakeOn = false;
-                    initIntake = true;
-                    spState = SpindexerState.IDLE;
-                    currentSlot = -1;
 
                     subState++;
                 }
@@ -682,17 +685,17 @@ public class CloseBlueAuto extends LinearOpMode {
 
             //region INTAKE LIMELIGHT
             if(intakeLimelightOn&&runtime.milliseconds()>timeout){
-                if(initIntake){
-                    spState = SpindexerState.FIND_EMPTY_SLOT;
-                    initIntake = false;
+                boolean gotBall = false;
+                if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'){//detect one ball intake
+                    savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
+                    spinClock();
+                    timeout = runtime.milliseconds()+500;
+                    gotBall=true;
                 }
-//                if(SPINDEXER_POSITIONS[slotToIndex(spindexerIndex)]!='n'||!follower.isBusy()){
-                if(!follower.isBusy()){
+
+                if(gotBall||!follower.isBusy()){
                     follower.breakFollowing();
-                    intakeLimelightOn=false;
-                    initIntake=true;
-                    spState = SpindexerState.IDLE;
-                    currentSlot = -1;
+                    intakeLimelightOn = false;
 
                     subState++;
                 }
@@ -705,12 +708,6 @@ public class CloseBlueAuto extends LinearOpMode {
             if (dtSec <= 0.0) dtSec = 1.0 / 50.0; // fallback
             //(angles must be negative for our direction)
             updateHoodPID(hoodAngle + hoodOffset, dtSec);
-            //endregion
-
-            //region UPDATE SPINDEXER INTAKE
-            if(intakeOn||intakeLimelightOn){
-                updateSpindexerAutoIntake();
-            }
             //endregion
 
             //region CAROUSEL
@@ -867,74 +864,6 @@ public class CloseBlueAuto extends LinearOpMode {
             case 1: return 2;
             case 2: return 4;
             default: return -1;
-        }
-    }
-    private void updateSpindexerAutoIntake() {
-        long now = (long) runtime.milliseconds();
-
-        switch (spState) {
-            case IDLE:
-                // Do nothing – spindexer is under manual control.
-                break;
-
-            case FIND_EMPTY_SLOT:
-                currentSlot = -1;
-                // look for first empty slot in savedBalls
-                for (int i = 0; i < savedBalls.length; i++) {
-                    if (savedBalls[i] == 'n') {   // 'n' = empty
-                        currentSlot = i;
-                        break;
-                    }
-                }
-
-                if (currentSlot == -1) {
-                    // No empty slots -> stop auto-intake
-                    spState = SpindexerState.IDLE;
-                } else {
-                    int targetIndex = slotToIndex(currentSlot);
-                    if (targetIndex != -1) {
-                        spindexerIndex = targetIndex;    // tell PID where to go
-                        spState = SpindexerState.ROTATE_TO_SLOT;
-                    } else {
-                        spState = SpindexerState.IDLE;
-                    }
-                }
-                break;
-
-            case ROTATE_TO_SLOT:
-                // PID is already rotating us to SPINDEXER_POSITIONS[spindexerIndex]
-                if (spindexerAtTarget && Math.abs(spindexerOutput) < 1e-3) {
-                    settleStartMs = now;
-                    spState = SpindexerState.WAIT_FOR_SETTLE;
-                }
-                break;
-
-            case WAIT_FOR_SETTLE:
-                // If we drift out of target, go back to ROTATE
-                if (!spindexerAtTarget) {
-                    spState = SpindexerState.ROTATE_TO_SLOT;
-                    break;
-                }
-
-                // Tiny dwell to let vibrations die down
-                if (now - settleStartMs > 40) {   // 40 ms is a good starting point
-                    spState = SpindexerState.WAIT_FOR_BALL;
-                }
-                break;
-
-            case WAIT_FOR_BALL:
-                // Option 1: use distance (alpha) for occupancy
-                boolean occupied = isBallPresent();
-
-                // Option 2: use the color logic you already have:
-                // savedBalls[currentSlot] will flip from 'n' to 'g'/'p'
-//                boolean occupied = (savedBalls[currentSlot] != 'n');
-
-                if (occupied) {
-                    // This slot is now full – go find the next empty one
-                    spState = SpindexerState.FIND_EMPTY_SLOT;
-                }
-                break;
         }
     }
     private boolean isBallPresent() {
@@ -1140,25 +1069,36 @@ public class CloseBlueAuto extends LinearOpMode {
 
     private void pathToBall(double tx,double ty){
         double hypotenuse = Math.sqrt((tx*tx) + (ty*ty));
+        telemetry.addData("hypotenuse",hypotenuse);
         double angle = Math.atan(tx/(ty-5));
 
-        ballX = (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
-        ballY = (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
+        double distX = (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
+        double distY = (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
         if(ty>50){
-            ballX = 0;
-            ballY = 0;
+            distX = 0;
+            distY = 0;
         }else if(hypotenuse>40){
-            ballX *= 1.7;
-            ballY *= 1.7;
+            distX *= 1.7;
+            distY *= 1.7;
         }else if(hypotenuse>30){
-            ballX *= 1.2;
-            ballY *= 1.2;
+            distX *= 1.2;
+            distY *= 1.2;
         }
 
-        ballX += follower.getPose().getX();
-        ballY += follower.getPose().getY();
+        ballX = follower.getPose().getX() + distX;
+        ballY = follower.getPose().getY() + distY;
 
         ballHeading = follower.getHeading()+(-angle*KballAngle);//in radians
+
+        //prevent slamming into wall
+        if(ballX<limelightWallPos){
+            double distXchange = ballX-limelightWallPos;//negative
+            double proportion = Math.abs(distXchange/distX);//positive
+            double distYchange = distY * proportion;
+            ballX -= distXchange;
+            ballY -= distYchange;
+        }
+
         Pose ballPose = new Pose(ballX,ballY,ballHeading);
 
         limelightPath = follower.pathBuilder()

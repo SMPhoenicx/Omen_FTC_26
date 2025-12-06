@@ -172,7 +172,7 @@ public class NeuralDetector extends LinearOpMode {
         limelight.pipelineSwitch(1);
 
         //follower
-        startPose = new Pose(100,100,Math.toRadians(180));
+        startPose = new Pose(144-121,121,Math.toRadians(180-125));
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
         //endregion
@@ -216,9 +216,9 @@ public class NeuralDetector extends LinearOpMode {
             //endregion
 
             //region BALL TRACKING
-            if (gamepad1.cross) {
+//            if (gamepad1.cross) {
                 pathToBall(ballTx,ballTy);
-            }
+//            }
             if(gamepad1.squareWasPressed()&&!follower.isBusy()){
                 follower.followPath(limelightPath,true);
             }
@@ -317,37 +317,36 @@ public class NeuralDetector extends LinearOpMode {
     //region HELPER METHODS
     private void pathToBall(double tx,double ty){
         double hypotenuse = Math.sqrt((tx*tx) + (ty*ty));
+        telemetry.addData("hypotenuse",hypotenuse);
         double angle = Math.atan(tx/(ty-5));
 
-//        ballX = (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
-//        ballY = (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
-//        double xSign = Math.signum(ballX);
-//        double ySign = Math.signum(ballY);
-//        ballX *= Math.pow(Math.abs(hypotenuse-30),KWhenBallFar) * 0.1;
-//        ballY *= Math.pow(Math.abs(hypotenuse-30),KWhenBallFar) * 0.1;
-//        ballX += follower.getPose().getX();
-//        ballY += follower.getPose().getY();
-
-        ballX = (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
-        ballY = (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
+        double distX = (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
+        double distY = (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
         if(ty>50){
-            ballX = 0;
-            ballY = 0;
+            distX = 0;
+            distY = 0;
         }else if(hypotenuse>40){
-            ballX *= 1.7;
-            ballY *= 1.7;
+            distX *= 1.7;
+            distY *= 1.7;
         }else if(hypotenuse>30){
-            ballX *= 1.2;
-            ballY *= 1.2;
+            distX *= 1.2;
+            distY *= 1.2;
         }
 
-        ballX += follower.getPose().getX();
-        ballY += follower.getPose().getY();
-
-//        ballX = follower.getPose().getX() + (Math.cos(follower.getHeading()-angle)*hypotenuse*Kball);
-//        ballY = follower.getPose().getY() + (Math.sin(follower.getHeading()-angle)*hypotenuse*Kball);
+        ballX = follower.getPose().getX() + distX;
+        ballY = follower.getPose().getY() + distY;
 
         ballHeading = follower.getHeading()+(-angle*KballAngle);//in radians
+
+        //prevent slamming into wall
+        if(ballX<26){//144-118 = 26
+            double distXchange = ballX-26;//negative
+            double proportion = Math.abs(distXchange/distX);//positive
+            double distYchange = distY * proportion;
+            ballX -= distXchange;
+            ballY -= distYchange;
+        }
+
         Pose ballPose = new Pose(ballX,ballY,ballHeading);
 
         limelightPath = follower.pathBuilder()
