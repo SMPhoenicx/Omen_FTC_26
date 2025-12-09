@@ -209,11 +209,10 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region TURRET SYSTEM
     // PIDF Constants
-    private double tuKp = 0.0055;
-    private double tuKi = 0.000;
-    private double tuKd = 0.00012;
-    private double tuKf = 0.0;
-
+    private double tuKp = 0.0050;
+    private double tuKi = 0.0006;
+    private double tuKd = 0.00014;
+    private double tuKf = 0.02;
 
     // PID State
     private double tuIntegral = 0.0;
@@ -357,7 +356,6 @@ public class MainBlueOpMode extends LinearOpMode
             double turnInput = -gamepad1.right_stick_x;
 
             follower.update();
-            pidLastTimeMs = runtime.milliseconds();
 
             //region TO REMOVE
             double lastPAdjustTime = 0;
@@ -513,9 +511,45 @@ public class MainBlueOpMode extends LinearOpMode
             // Update Hood PID
             double nowMs = runtime.milliseconds();
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
-            if (dtSec <= 0.0) dtSec = 1.0 / 50.0; // fallback
-            //(angles must be negative for our direction)
+            pidLastTimeMs = nowMs;
+
+            if (dtSec <= 0.0) dtSec = 1.0 / 50.0;
+
             updateHoodPID(hoodAngle + hoodOffset, dtSec);
+            //endregion
+
+            // === PIDF tuning via Gamepad2 ===
+            double adjustStepP = 0.0002;
+            double adjustStepI = 0.0002;
+            double adjustStepD = 0.00001;
+            double debounceTime = 175; // milliseconds
+
+            if (runtime.milliseconds() - lastPAdjustTime > debounceTime) {
+                if (gamepad2.squareWasPressed()) { tuKp += adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.circleWasPressed()) { tuKp -= adjustStepP; lastPAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastIAdjustTime > debounceTime) {
+                if (gamepad2.rightBumperWasPressed()) { tuKi += adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.leftBumperWasPressed()) { tuKi -= adjustStepI; lastIAdjustTime = runtime.milliseconds(); }
+            }
+            if (runtime.milliseconds() - lastDAdjustTime > debounceTime) {
+                if (gamepad2.dpadUpWasPressed()) { tuKd += adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+                if (gamepad2.dpadDownWasPressed()) { tuKd -= adjustStepD; lastDAdjustTime = runtime.milliseconds(); }
+            }
+
+
+            // Safety clamp
+            tuKp = Math.max(0, tuKp);
+            tuKi = Math.max(0, tuKi);
+            tuKd = Math.max(0, tuKd);
+
+            // Display PID constants on telemetry
+            telemetry.addData("PID Tuning", "Press square/circle=P+,P- | right/left bumper=I+,I- | Dpad Up/Down=D+,D-");
+            telemetry.addData("kP", "%.4f", tuKp);
+            telemetry.addData("kI", "%.4f", tuKi);
+            telemetry.addData("kD", "%.5f", tuKd);
+            telemetry.addData("spin1 power", "%.4f", turret1.getPower());
+            telemetry.addData("spin2 power", "%.4f", turret2.getPower());
             //endregion
 
             //region INTAKE CONTROL
@@ -578,10 +612,10 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             //intake positions are the even ones
-            if (gamepad2.dpadUpWasPressed()) {
-                autoShot = true;
-                autoShootNum = 3;
-            }
+//            if (gamepad2.dpadUpWasPressed()) {
+//                autoShot = true;
+//                autoShootNum = 3;
+//            }
 
             if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 350)) {
                 spinClock();
@@ -637,62 +671,69 @@ public class MainBlueOpMode extends LinearOpMode
             //region GOAL TRACKING
             double dt = Math.max(pidTimer.seconds(), 1e-3);
             pidTimer.reset();
-
-// How aggressively the turret target chases camera error (deg/sec per deg error)
-            final double K_TRACK = 6.0;     // main tuning knob
-            final double MAX_TRACK_RATE = 240.0;  // absolute max deg/sec
-
-            if (targetFound) {
-
-                // Camera is upside down, so reverse bearing from AprilTag
-                double rawBearing = -desiredTag.ftcPose.bearing;
-
-                lastKnownBearing = rawBearing;
-                lastDetectionTime = System.currentTimeMillis();
-
-                // --- Single low-pass filter to smooth AprilTag noise ---
-                double alpha = 0.3;  // 0–1, higher = faster but noisier
-                filteredHeadingError += alpha * (rawBearing - filteredHeadingError);
-
-                // Use the filtered error
-                // Use the filtered error
-                double trackingError = filteredHeadingError;
-
-                if (Math.abs(trackingError) < 1.5) {
-                    trackingError = 0.0;
-                }
-
-// -------- TURN FEEDFORWARD --------
-// How fast the robot can spin at full stick (guess)
-                final double ROBOT_MAX_YAW_RATE = 180.0; // deg/sec at full right stick
-
-// How strongly turret should react to that spin (tune this)
-                final double kTurnFF = 0.8; // start around 0.5–1.0
-
-// Positive turnInput = robot turning one way -> turret must compensate opposite.
-// The minus sign here is a guess; we’ll test & flip if needed.
-                double ffRate = -kTurnFF * turnInput * ROBOT_MAX_YAW_RATE;  // deg/sec
-// ----------------------------------
-
-// Desired turret target *angular speed* based on camera + driver turn
-                double desiredRate = K_TRACK * trackingError + ffRate;
-
-                desiredRate = Range.clip(desiredRate, -MAX_TRACK_RATE, MAX_TRACK_RATE);
-
-                double step = desiredRate * dt;
-                tuPos += step;
-
-
-                // Clamp turret target to allowed range
-                tuPos = Range.clip(tuPos, -180, 180);
-
-                telemetry.addData("Tracking", "LIVE err=%.1f° rate=%.1f°/s target=%.1f°",
-                        trackingError, desiredRate, tuPos);
+//
+//// How aggressively the turret target chases camera error (deg/sec per deg error)
+//            final double K_TRACK = 6.0;     // main tuning knob
+//            final double MAX_TRACK_RATE = 240.0;  // absolute max deg/sec
+//
+//            if (targetFound) {
+//
+//                // Camera is upside down, so reverse bearing from AprilTag
+//                double rawBearing = -desiredTag.ftcPose.bearing;
+//
+//                lastKnownBearing = rawBearing;
+//                lastDetectionTime = System.currentTimeMillis();
+//
+//                // --- Single low-pass filter to smooth AprilTag noise ---
+//                double alpha = 0.3;  // 0–1, higher = faster but noisier
+//                filteredHeadingError += alpha * (rawBearing - filteredHeadingError);
+//
+//                // Use the filtered error
+//                // Use the filtered error
+//                double trackingError = filteredHeadingError;
+//
+//                if (Math.abs(trackingError) < 1.5) {
+//                    trackingError = 0.0;
+//                }
+//
+//// -------- TURN FEEDFORWARD --------
+//// How fast the robot can spin at full stick (guess)
+//                final double ROBOT_MAX_YAW_RATE = 180.0; // deg/sec at full right stick
+//
+//// How strongly turret should react to that spin (tune this)
+//                final double kTurnFF = 0.8; // start around 0.5–1.0
+//
+//// Positive turnInput = robot turning one way -> turret must compensate opposite.
+//// The minus sign here is a guess; we’ll test & flip if needed.
+//                double ffRate = -kTurnFF * turnInput * ROBOT_MAX_YAW_RATE;  // deg/sec
+//// ----------------------------------
+//
+//// Desired turret target *angular speed* based on camera + driver turn
+//                double desiredRate = K_TRACK * trackingError + ffRate;
+//
+//                desiredRate = Range.clip(desiredRate, -MAX_TRACK_RATE, MAX_TRACK_RATE);
+//
+//                double step = desiredRate * dt;
+//                tuPos += step;
+//
+//
+//                // Clamp turret target to allowed range
+//                tuPos = Range.clip(tuPos, -180, 180);
+//
+//                telemetry.addData("Tracking", "LIVE err=%.1f° rate=%.1f°/s target=%.1f°",
+//                        trackingError, desiredRate, tuPos);
+//            }
+//            else {
+//                // No tag: hold last target, don't keep walking and don't fight the PID
+//                telemetry.addData("Tracking", "LOST");
+//            }
+            if (gamepad1.dpadRightWasPressed()) {
+                tuPos += 140;
             }
-            else {
-                // No tag: hold last target, don't keep walking and don't fight the PID
-                telemetry.addData("Tracking", "LOST");
+            if (gamepad1.dpadLeftWasPressed()) {
+                tuPos -= 140;
             }
+            tuPos = clamp(tuPos, -340, 340);
 // Manual control
             turn = turnInput;
 
@@ -1110,12 +1151,16 @@ public class MainBlueOpMode extends LinearOpMode
         }
         return 'n';
     }
-
     private boolean isBallPresent() {
         NormalizedRGBA colors = color.getNormalizedColors();
 
-        return colors.alpha > 0.15;
+        if (colors.alpha > 0.15) {
+            return true;
+        }
+        return false;
     }
+
+
 
     private double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
