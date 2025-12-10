@@ -9,6 +9,7 @@ import com.pedropathing.geometry.FuturePose;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.HeadingInterpolator;
 import com.pedropathing.paths.PathChain;
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -74,6 +75,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private CRServo turret2 = null;
 
     // ENCODERS
+    private GoBildaPinpointDriver pinpoint = null;
     private AnalogInput spinEncoder;
     private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
@@ -122,7 +124,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 10.52;
-    double flyKi = 0.47;
+    double flyKi = 0.57;
     double flyKd = 6.1;
     double flyKiOffset = 0.0;
     //endregion
@@ -240,18 +242,16 @@ public class CloseBlue12Ball extends LinearOpMode {
         pickup2[1] = new Pose(144-127,58,Math.toRadians(180));
         pickup2[2] = new Pose(144-107,68,Math.toRadians(180));
 
-        pickup3[0] = new Pose(144-94,36,Math.toRadians(180));
-        pickup3[1] = new Pose(144-126,36,Math.toRadians(180));
-        pickup3[2] = new Pose(144-106,46,Math.toRadians(180));
+        pickup3[0] = new Pose(144-94,35,Math.toRadians(180));
+        pickup3[1] = new Pose(144-126,35,Math.toRadians(180));
+        pickup3[2] = new Pose(144-106,45,Math.toRadians(180));
 
         shoot1 = new Pose(144-90,90,Math.toRadians(180));
         movePoint = new Pose(144-90,50,Math.toRadians(180));
     }
 
     public void createPaths(){
-//        limelightPath = follower.pathBuilder()
-//                .addPath(new BezierCurve(this::limelightPose, follower::getPose))
-//                .build();
+        //if in the future pickupPath [0] and [1] could be combines that would be hype but the reason they're seperated rn is so that pickupPath[1] can be run at a lower max speed (since we gotta drive slower when intaking
         scorePath0 = follower.pathBuilder()
                 .addPath(new BezierCurve(startPose,shoot1))
                 .setLinearHeadingInterpolation(startPose.getHeading(),shoot1.getHeading())
@@ -344,6 +344,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         turret2 = hardwareMap.get(CRServo.class, "tu2");
 
         //ENCODERS
+        pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
         hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
@@ -377,6 +378,9 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
 
         //region INITIALIZE PEDRO
+        pinpoint.resetPosAndIMU();
+        pinpoint.recalibrateIMU();
+
         createPoses();
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
@@ -386,6 +390,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
         hoodOffset=0;
         tuPos = -20;
+        flyKi += 0.3;
 
 
         //WAIT
@@ -425,6 +430,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1[0],false);
+                            flyKi -= 0.3;
 
                             subState++;
                         }
@@ -592,6 +598,9 @@ public class CloseBlue12Ball extends LinearOpMode {
                 }
 
                 if(spindexerFull()||!follower.isBusy()){
+                    if(spindexerFull()){
+                        intake.setPower(0);
+                    }
                     follower.breakFollowing();
                     intakeOn = false;
 
@@ -599,24 +608,6 @@ public class CloseBlue12Ball extends LinearOpMode {
                 }
             }else{
                 getRealColor();
-            }
-            //endregion
-
-            //region INTAKE LIMELIGHT
-            if(intakeLimelightOn&&runtime.milliseconds()>timeout){
-                boolean gotBall = false;
-                if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'&&spindexerAtTarget){//detect one ball intake
-                    savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
-                    spinClock();
-                    gotBall=true;
-                }
-
-                if(gotBall||!follower.isBusy()){
-                    follower.breakFollowing();
-                    intakeLimelightOn = false;
-
-                    subState++;
-                }
             }
             //endregion
 
@@ -660,6 +651,9 @@ public class CloseBlue12Ball extends LinearOpMode {
             //endregion
 
             //region AUTO SHOOTING
+            //prevent ball not firing
+            if(autoShootOn&&shootingState==1&&spindexerAtTarget) transOn = true;
+
             if(autoShootOn&&!follower.isBusy()&&runtime.milliseconds()>timeout){
                 intake.setPower(0);
                 double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
@@ -693,6 +687,7 @@ public class CloseBlue12Ball extends LinearOpMode {
             //endregion
 
             //region FLYWHEEL
+            //TODO fix pid
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
             double baseF = 12.0/2450.0;
             double compensatedF = baseF * (13.0/voltage);
@@ -718,6 +713,9 @@ public class CloseBlue12Ball extends LinearOpMode {
 
             //region TELEMETRY
             if(!running) telemetry.addLine("Done!");
+            double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+
+            telemetry.addData("Encoder Fly Speed",avgSpeed);
             telemetry.addData("path state", pathState);
             telemetry.addData("sub state",subState);
             telemetry.addData("shooting state",shootingState);
