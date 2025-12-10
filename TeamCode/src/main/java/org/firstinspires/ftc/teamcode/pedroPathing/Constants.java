@@ -7,10 +7,14 @@ import com.pedropathing.follower.FollowerConstants;
 import com.pedropathing.ftc.FollowerBuilder;
 import com.pedropathing.ftc.drivetrains.MecanumConstants;
 import com.pedropathing.ftc.localization.Encoder;
+import com.pedropathing.ftc.localization.constants.PinpointConstants;
 import com.pedropathing.ftc.localization.constants.ThreeWheelConstants;
 import com.pedropathing.paths.PathConstraints;
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 
 public class Constants {
@@ -35,7 +39,7 @@ public class Constants {
         return new FollowerBuilder(followerConstants, hardwareMap)
                 .pathConstraints(pathConstraints)
                 .mecanumDrivetrain(driveConstants)
-                .threeWheelLocalizer(localizerConstants)
+                .pinpointLocalizer(localizerConstants)
                 .build();
     }
 
@@ -52,17 +56,12 @@ public class Constants {
             .xVelocity(76.644973761374)
             .yVelocity(62.931638202634);
 
-    public static ThreeWheelConstants localizerConstants = new ThreeWheelConstants()
-            .leftPodY(6.75)
-            .rightPodY(-6.75)
-            .strafePodX(-6.75)
-            .leftEncoder_HardwareMapName("fl")
-            .rightEncoder_HardwareMapName("br")
-            .strafeEncoder_HardwareMapName("fr")
-            .leftEncoderDirection(Encoder.REVERSE)
-            .rightEncoderDirection(Encoder.FORWARD)
-            .strafeEncoderDirection(Encoder.REVERSE)
-            .forwardTicksToInches(0.0029709051374068)
-            .strafeTicksToInches(0.002965710844482233)
-            .turnTicksToInches(0.0029761537370001);
+    public static PinpointConstants localizerConstants = new PinpointConstants()
+            .forwardPodY(-6.53)
+            .strafePodX(-6.46)
+            .distanceUnit(DistanceUnit.INCH)
+            .hardwareMapName("pinpoint")
+            .encoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_SWINGARM_POD)
+            .forwardEncoderDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
+            .strafeEncoderDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD);
 }

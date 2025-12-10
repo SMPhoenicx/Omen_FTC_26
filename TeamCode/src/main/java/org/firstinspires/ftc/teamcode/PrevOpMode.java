@@ -37,6 +37,7 @@ import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -100,6 +101,7 @@ public class PrevOpMode extends LinearOpMode
     private AnalogInput turretEncoder;
     private NormalizedColorSensor color = null;
     private NormalizedColorSensor color2 = null;
+    private GoBildaPinpointDriver pinpoint = null;
     // Vision Hardware
     private Limelight3A limelight;
     //endregion
@@ -112,8 +114,6 @@ public class PrevOpMode extends LinearOpMode
     // FTC Vision Portal
     private VisionPortal visionPortal;
     private AprilTagProcessor aprilTag;
-
-    private IMU imu;
     // Tracking State
 
     //endregion
@@ -185,12 +185,12 @@ public class PrevOpMode extends LinearOpMode
     private double tuKp = 0.0050;
     private double tuKi = 0.0006;
     private double tuKd = 0.00014;
-    private double tuKf = 0.02;
+    private double tuKf = 0.0;
 
 
     private double lastTuTarget = 0.0;
     private boolean lastTuTargetInit = false;
-    private static final double tuKv = 0.0015; // start small
+    private static final double tuKv = 0.00; // start small
 
 
     // PID State
@@ -208,16 +208,10 @@ public class PrevOpMode extends LinearOpMode
     private static final double goalX = 0.0;
     private static final double goalY = 144.0;
 
-    private static final double turretHoldDeg = -140;
+    private static final double turretHoldDeg = -145.0;
     private boolean hasTeleopLocalized = false;
 
-    private static final double TURRET_ZERO_OFFSET_DEG = -140.0;
-
-    private double fusedHeadingRad = 0.0;
-    private boolean fusedHeadingInitialized = false;
-
-    // Trust factor: 0.0 = pure odom heading, 1.0 = pure IMU heading
-    private static final double HEADING_IMU_ALPHA = 0.85;
+    private static final double TURRET_ZERO_OFFSET_DEG = -145.0;
 
     //endregion
 
@@ -302,7 +296,6 @@ public class PrevOpMode extends LinearOpMode
         // Initialize Sensors
         color = hardwareMap.get(NormalizedColorSensor.class, "Color 1");
         color2 = hardwareMap.get(NormalizedColorSensor.class, "Color 2");
-        imu = hardwareMap.get(IMU.class, "imu");
 
         // Configure Motor Modes
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -328,13 +321,6 @@ public class PrevOpMode extends LinearOpMode
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(new Pose(23, 120, Math.toRadians(55)));
         //endregion
-
-        IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                RevHubOrientationOnRobot.LogoFacingDirection.LEFT, // Or FORWARD, DOWN, etc.
-                RevHubOrientationOnRobot.UsbFacingDirection.UP // Or LEFT, UP, etc.
-        ));
-
-        imu.initialize(parameters);
 
         //region PRE-START
         initAprilTag();
@@ -616,13 +602,17 @@ public class PrevOpMode extends LinearOpMode
 //                spinBallLED();
 //            }
             if (intakeOn) {
-                double currentSlot = -1;
+                int currentSlot = -1;
                 // look for first empty slot in savedBalls
                 for (int i = 0; i < savedBalls.length; i++) {
                     if (savedBalls[i] == 'n') {   // 'n' = empty
                         currentSlot = i;
                         break;
                     }
+                }
+                if (currentSlot == -1) {
+                    prevSpindexerIndex = spindexerIndex;
+                    spindexerIndex = currentSlot;
                 }
 
             }
@@ -644,22 +634,18 @@ public class PrevOpMode extends LinearOpMode
                     boolean ok = applyInitialAprilLocalization(desiredTag);
                     if (ok) {
                         hasTeleopLocalized = true;
+
+                        tuIntegral = 0.0;
+                        tuLastError = 0.0;
+                        lastTuTargetInit = false;  // resets target-rate FF history
                     }
                 }
             }
             else {
-                double fusedH = updateFusedHeading(robotPose);
+                double heading = robotPose.getHeading();
+                tuPos = computeTurretTargetFromXYH(robotPose.getX(), robotPose.getY(), heading, goalX, goalY);
 
-                tuPos = computeTurretTargetFromXYH(
-                        robotPose.getX(),
-                        robotPose.getY(),
-                        fusedH,
-                        goalX,
-                        goalY
-                );
                 telemetry.addData("Head ODOM", "%.1f", Math.toDegrees(robotPose.getHeading()));
-                telemetry.addData("Head IMU",  "%.1f", Math.toDegrees(getImuHeadingRad()));
-                telemetry.addData("Head FUSED","%.1f", Math.toDegrees(fusedHeadingRad));
 
             }
             telemetry.addData("TurretTarget", "ODOM = %.1f°", tuPos);
@@ -709,7 +695,6 @@ public class PrevOpMode extends LinearOpMode
                 lastTuTarget = tuPos;
             }
 
-            tuPos = clamp(tuPos, -170, 170);
             updateTurretPIDWithTargetFF(tuPos, targetVelDegPerSec, dtSec);
             //endregion
 
@@ -1086,33 +1071,6 @@ public class PrevOpMode extends LinearOpMode
         if (rad < 0) rad += 2 * Math.PI;
         return rad - Math.PI;
     }
-
-    private double angleLerpRad(double a, double b, double t) {
-        // Interpolate a -> b along shortest arc
-        double diff = normalizeRadPi(b - a);
-        return a + diff * t;
-    }
-
-    private double getImuHeadingRad() {
-        YawPitchRollAngles ypr = imu.getRobotYawPitchRollAngles();
-        return ypr.getYaw(AngleUnit.RADIANS);
-    }
-
-    private double updateFusedHeading(Pose robotPose) {
-        double odomH = robotPose.getHeading();
-        double imuH = getImuHeadingRad();
-
-        if (!fusedHeadingInitialized) {
-            fusedHeadingRad = imuH; // start aligned with IMU
-            fusedHeadingInitialized = true;
-            return fusedHeadingRad;
-        }
-
-        // Complementary fusion using wrap-safe interpolation
-        fusedHeadingRad = angleLerpRad(odomH, imuH, HEADING_IMU_ALPHA);
-        return fusedHeadingRad;
-    }
-
 
     private boolean applyInitialAprilLocalization(AprilTagDetection tag) {
         // Basic safety checks
