@@ -51,10 +51,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private Pose[] pickup1 = new Pose[3];
     private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
-    private PathChain scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath,gatePath;
-    private PathChain[] pickupPath1 = new PathChain[2];
-    private PathChain[] pickupPath2 = new PathChain[2];
-    private PathChain[] pickupPath3 = new PathChain[2];
+    private PathChain scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath,gatePath, pickupPath1, pickupPath2, pickupPath3;
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -127,6 +124,8 @@ public class CloseBlue12Ball extends LinearOpMode {
     double flyKi = 0.57;
     double flyKd = 6.1;
     double flyKiOffset = 0.0;
+
+    private boolean shootReady = false;
     //endregion
 
     //region HOOD SYSTEM
@@ -178,6 +177,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     // Ball Storage Tracking ('n','p','g')
     private char[] savedBalls = {'g', 'p', 'p'};
     int greenPos=0;
+    boolean intakeOn = false;
 
     // Auto-intake State Machine
     private enum SpindexerState {
@@ -233,18 +233,19 @@ public class CloseBlue12Ball extends LinearOpMode {
     public void createPoses(){
         startPose = new Pose(144-121,121,Math.toRadians(180-125));
 
-        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
-        pickup1[1] = new Pose(144-118,83,Math.toRadians(180));
-//        pickup1[2] = new Pose(144-118,70,Math.toRadians(90));
+//        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
+        pickup1[0] = new Pose(144-90,82,Math.toRadians(180));
+        pickup1[1] = new Pose(144-118,82,Math.toRadians(180));
+        pickup1[2] = new Pose(144-84,83,Math.toRadians(180));
         gatePose = new Pose(144-120,77,Math.toRadians(90));
 
-        pickup2[0] = new Pose(144-94,58,Math.toRadians(180));
-        pickup2[1] = new Pose(144-127,58,Math.toRadians(180));
-        pickup2[2] = new Pose(144-107,68,Math.toRadians(180));
+        pickup2[0] = new Pose(144-70,51,Math.toRadians(180));
+        pickup2[1] = new Pose(144-127,57,Math.toRadians(180));
+        pickup2[2] = new Pose(144-75,57,Math.toRadians(180));
 
-        pickup3[0] = new Pose(144-94,35,Math.toRadians(180));
+        pickup3[0] = new Pose(144-70,20,Math.toRadians(180));
         pickup3[1] = new Pose(144-126,35,Math.toRadians(180));
-        pickup3[2] = new Pose(144-106,45,Math.toRadians(180));
+        pickup3[2] = new Pose(144-64,35,Math.toRadians(180));
 
         shoot1 = new Pose(144-90,90,Math.toRadians(180));
         movePoint = new Pose(144-90,50,Math.toRadians(180));
@@ -253,49 +254,53 @@ public class CloseBlue12Ball extends LinearOpMode {
     public void createPaths(){
         //if in the future pickupPath [0] and [1] could be combines that would be hype but the reason they're seperated rn is so that pickupPath[1] can be run at a lower max speed (since we gotta drive slower when intaking
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierCurve(startPose,shoot1))
+                .addPath(new BezierLine(startPose,shoot1))
                 .setLinearHeadingInterpolation(startPose.getHeading(),shoot1.getHeading())
+                .addParametricCallback(0.90,()-> shootReady=true)
                 .build();
-        pickupPath1[0] = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup1[0]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup1[0].getHeading())
+        pickupPath1 = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickup1[0],pickup1[1]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup1[1].getHeading())
+                .addPoseCallback(pickup1[2],()->{
+                    follower.setMaxPower(0.3);
+                    intakeOn = true;
+                    },0.2)
                 .build();
-        pickupPath1[1] = follower.pathBuilder()
-                .addPath(new BezierLine(pickup1[0],pickup1[1]))
-                .setLinearHeadingInterpolation(pickup1[0].getHeading(),pickup1[1].getHeading())
+        pickupPath2 = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[1].getHeading())
+                .addPoseCallback(pickup2[2],()->{
+                    follower.setMaxPower(0.3);
+                    intakeOn = true;
+                },0.3)
                 .build();
-        pickupPath2[0] = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup2[0]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[0].getHeading())
-                .build();
-        pickupPath2[1] = follower.pathBuilder()
-                .addPath(new BezierLine(pickup2[0],pickup2[1]))
-                .setLinearHeadingInterpolation(pickup2[0].getHeading(),pickup2[1].getHeading())
-                .build();
-        pickupPath3[0] = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup3[0]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[0].getHeading())
-                .build();
-        pickupPath3[1] = follower.pathBuilder()
-                .addPath(new BezierLine(pickup3[0],pickup3[1]))
-                .setLinearHeadingInterpolation(pickup3[0].getHeading(),pickup3[1].getHeading())
+        pickupPath3 = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickup3[0],pickup3[1]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[1].getHeading())
+                .addPoseCallback(pickup3[2],()->{
+                    follower.setMaxPower(0.3);
+                    intakeOn = true;
+                },0.5)
                 .build();
         gatePath = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup1[1],gatePose))
                 .setLinearHeadingInterpolation(pickup1[1].getHeading(),gatePose.getHeading())
-                .setTimeoutConstraint(500)
+//                .setTimeoutConstraint(1000)
                 .build();
         scorePath1 = follower.pathBuilder()
-                .addPath(new BezierCurve(gatePose,shoot1))
+                .addPath(new BezierLine(gatePose,shoot1))
                 .setLinearHeadingInterpolation(gatePose.getHeading(),shoot1.getHeading())
+                .addParametricCallback(0.90,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup2[1],pickup2[2],shoot1))
                 .setLinearHeadingInterpolation(pickup2[1].getHeading(),shoot1.getHeading())
+                .addParametricCallback(0.93,()-> shootReady=true)
                 .build();
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup3[1],pickup3[2],shoot1))
                 .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot1.getHeading())
+                .addParametricCallback(0.95,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,movePoint))
@@ -325,7 +330,6 @@ public class CloseBlue12Ball extends LinearOpMode {
         boolean motifOn = false;
         boolean transOn = false;
         boolean autoShootOn = false;
-        boolean intakeOn = false;
         boolean intakeLimelightOn = false;
         //endregion
 
@@ -378,8 +382,8 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
 
         //region INITIALIZE PEDRO
-        pinpoint.resetPosAndIMU();
-        pinpoint.recalibrateIMU();
+//        pinpoint.resetPosAndIMU();
+//        pinpoint.recalibrateIMU();
 
         createPoses();
         follower = Constants.createFollower(hardwareMap);
@@ -389,7 +393,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
-        tuPos = -20;
+        tuPos = -80;
         flyKi += 0.3;
 
 
@@ -416,7 +420,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = 110;
+                            tuPos = -55;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -429,81 +433,67 @@ public class CloseBlue12Ball extends LinearOpMode {
                     //region CYCLE ONE
                     case 1:
                         if(subState==0){
-                            follower.followPath(pickupPath1[0],false);
+                            follower.followPath(pickupPath1,false);
                             flyKi -= 0.3;
 
                             subState++;
                         }
-                        else if(subState==1){
-                            follower.followPath(pickupPath1[1],0.3,false);
-                            intakeOn = true;
-
-                            subState++;
-                        }
-                        //INTAKE is subState 2
-                        else if(subState==3){
+                        //INTAKE is subState 1
+                        else if(subState==2){
+                            follower.setMaxPower(1);
                             follower.followPath(gatePath,true);
 
+                            timeout = runtime.milliseconds()+1500;
                             subState++;
                         }
-                        else if(subState==4){
+                        else if(subState==3){
                             follower.followPath(scorePath1,true);
                             autoShootOn = true;
                             shootingState=0;
 
                             subState++;
                         }
-                        //AUTO SHOOTING is subState 5, resets subState, and increments pathState
+                        //AUTO SHOOTING is subState 4, resets subState, and increments pathState
                         break;
                     //endregion
 
                     //region CYCLE TWO
                     case 2:
                         if(subState==0){
-                            follower.followPath(pickupPath2[0],false);
+                            follower.followPath(pickupPath2,false);
 
                             subState++;
                         }
-                        else if(subState==1){
-                            follower.followPath(pickupPath2[1],0.3,false);
-                            intakeOn = true;
-
-                            subState++;
-                        }
-                        //INTAKE is subState 2
-                        else if(subState==3){
+                        //INTAKE is subState 1
+                        else if(subState==2){
+                            follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
                             autoShootOn = true;
                             shootingState=0;
 
                             subState++;
                         }
-                        //AUTO SHOOTING is subState 4, resets subState, and increments pathState
+                        //AUTO SHOOTING is subState 3, resets subState, and increments pathState
                         break;
                     //endregion
 
                     //region CYCLE THREE
                     case 3:
                         if(subState==0){
-                            follower.followPath(pickupPath3[0],false);
+                            follower.followPath(pickupPath3,false);
 
                             subState++;
                         }
-                        else if(subState==1){
-                            follower.followPath(pickupPath3[1],0.3,false);
-                            intakeOn = true;
-
-                            subState++;
-                        }
-                        //INTAKE is subState 2
-                        else if(subState==3){
+                        //INTAKE is subState 1
+                        else if(subState==2){
+                            follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
                             autoShootOn = true;
                             shootingState=0;
 
                             subState++;
                         }
-                        //AUTO SHOOTING is subState 4, resets subState, and increments pathState
+                        //AUTO SHOOTING is subState 3, resets subState, and increments pathState
                         break;
                     //endregion
 
@@ -654,7 +644,7 @@ public class CloseBlue12Ball extends LinearOpMode {
             //prevent ball not firing
             if(autoShootOn&&shootingState==1&&spindexerAtTarget) transOn = true;
 
-            if(autoShootOn&&!follower.isBusy()&&runtime.milliseconds()>timeout){
+            if(autoShootOn&&runtime.milliseconds()>timeout&&(shootReady||!follower.isBusy())){
                 intake.setPower(0);
                 double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
@@ -662,13 +652,13 @@ public class CloseBlue12Ball extends LinearOpMode {
                     transOn = true;
                     spinClock();
 
-                    timeout=runtime.milliseconds()+260;
+                    timeout=runtime.milliseconds()+300;
                     shootingState++;
                 }
                 else if(shootingState==2){
                     spinClock();
 
-                    timeout=runtime.milliseconds()+260;
+                    timeout=runtime.milliseconds()+300;
                     shootingState++;
                 }
                 else if(shootingState==3){
@@ -678,6 +668,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                     shootingState++;
                 }
                 else if(shootingState==4&&spindexerAtTarget){
+                    shootReady = false;
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
