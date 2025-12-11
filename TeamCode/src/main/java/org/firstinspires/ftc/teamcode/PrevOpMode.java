@@ -66,6 +66,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -187,11 +188,9 @@ public class PrevOpMode extends LinearOpMode
     private double tuKd = 0.00014;
     private double tuKf = 0.0;
 
-
     private double lastTuTarget = 0.0;
     private boolean lastTuTargetInit = false;
     private static final double tuKv = 0.00; // start small
-
 
     // PID State
     private double tuIntegral = 0.0;
@@ -208,10 +207,16 @@ public class PrevOpMode extends LinearOpMode
     private static final double goalX = 0.0;
     private static final double goalY = 144.0;
 
-    private static final double turretHoldDeg = -145.0;
+    private static final double turretHoldDeg = 0.0;
     private boolean hasTeleopLocalized = false;
 
-    private static final double TURRET_ZERO_OFFSET_DEG = -145.0;
+    private static final double TURRET_ZERO_OFFSET_DEG = 0.0;
+    private static final double TAG_X_PEDRO = 16.0;
+    private static final double TAG_Y_PEDRO = 130.0;
+
+    private static final double TURRET_LIMIT_DEG = 140.0;
+
+    private static final double TURRET_WRAP_MARGIN_DEG = 5.0;
 
     //endregion
 
@@ -400,17 +405,19 @@ public class PrevOpMode extends LinearOpMode
             char detectedColor = getDetectedColor();
             boolean present = isBallPresent();
             // Update saved ball positions based on spindexer position
-            if (spindexerIndex == 0) {
-                savedBalls[0] = detectedColor;
-                presentBalls[0] = present;
-            }
-            if (spindexerIndex == 2) {
-                savedBalls[1] = detectedColor;
-                presentBalls[1] = present;
-            }
-            if (spindexerIndex == 4) {
-                savedBalls[2] = detectedColor;
-                presentBalls[2] = present;
+            if (lastError < 4 && lastError > -4) {
+                if (spindexerIndex == 0) {
+                    savedBalls[0] = detectedColor;
+                    presentBalls[0] = present;
+                }
+                if (spindexerIndex == 2) {
+                    savedBalls[1] = detectedColor;
+                    presentBalls[1] = present;
+                }
+                if (spindexerIndex == 4) {
+                    savedBalls[2] = detectedColor;
+                    presentBalls[2] = present;
+                }
             }
 
             // Clear ball positions when transferring
@@ -430,6 +437,8 @@ public class PrevOpMode extends LinearOpMode
             }
 
             telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
+
+            telemetry.addData("PRESNT Balls", "0: %b, 1: %b, 2: %b", presentBalls[0], presentBalls[1], presentBalls[2]);
             //endregion
 
             //region TO REMOVE
@@ -586,10 +595,15 @@ public class PrevOpMode extends LinearOpMode
                 autoShootNum = 3;
             }
 
-            if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 260)) {
+            if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 270)) {
                 spinClock();
                 autoShootNum--;
                 autoShootTime = runtime.milliseconds();
+            }
+
+            if (autoShootNum == 1) {
+                Arrays.fill(savedBalls, 'n');
+                Arrays.fill(presentBalls, false);
             }
 
             if (autoShootNum <= 0) {
@@ -610,9 +624,9 @@ public class PrevOpMode extends LinearOpMode
                         break;
                     }
                 }
-                if (currentSlot == -1) {
+                if (currentSlot != -1) {
                     prevSpindexerIndex = spindexerIndex;
-                    spindexerIndex = currentSlot;
+                    spindexerIndex = currentSlot * 2;
                 }
 
             }
@@ -682,7 +696,11 @@ public class PrevOpMode extends LinearOpMode
 
             //region TURRET CONTROl
 
-            tuPos = clamp(tuPos, -170, 170);
+            double rawTurretTargetDeg = tuPos;
+
+            double safeTurretTargetDeg = applyTurretLimitWithWrap(rawTurretTargetDeg);
+
+            tuPos = safeTurretTargetDeg;
 
             double targetVelDegPerSec = 0.0;
 
@@ -692,7 +710,7 @@ public class PrevOpMode extends LinearOpMode
             } else {
                 double dTarget = normalizeDeg180(tuPos - lastTuTarget);
                 targetVelDegPerSec = dTarget / Math.max(dtSec, 1e-3);
-                lastTuTarget = tuPos;
+                lastTuTarget = safeTurretTargetDeg;
             }
 
             updateTurretPIDWithTargetFF(tuPos, targetVelDegPerSec, dtSec);
@@ -706,6 +724,10 @@ public class PrevOpMode extends LinearOpMode
             // Apply drive commands when not path following
             if (!follower.isBusy()) {
                 moveRobot(drive, strafe, turn);
+            }
+
+            if (gamepad2.right_trigger > 0.5) {
+                flyHoodLock = !flyHoodLock;
             }
             //endregion
 
@@ -805,6 +827,7 @@ public class PrevOpMode extends LinearOpMode
 
         // telemetry for PID (keeps concise, add more if you want)
         telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
+        telemetry.addData("Spindexer Error", "%.1f°", lastError);
 
     }
 
@@ -917,6 +940,8 @@ public class PrevOpMode extends LinearOpMode
         NormalizedRGBA colors1 = color.getNormalizedColors();
         NormalizedRGBA colors2 = color2.getNormalizedColors();
 
+        telemetry.addData("COLORS 1", colors1.alpha);
+        telemetry.addData("COLORS 2", colors2.alpha);
         return colors1.alpha > 0.15 || colors2.alpha > 0.15;
     }
 
@@ -1055,17 +1080,6 @@ public class PrevOpMode extends LinearOpMode
         return deg - 180;
     }
 
-    private double computeTurretTargetFromPose(Pose robotPose, double goalX, double goalY) {
-        double dx = goalX - robotPose.getX();
-        double dy = goalY - robotPose.getY();
-
-        double headingToGoalDeg = Math.toDegrees(Math.atan2(dy, dx));
-        double robotHeadingDeg = Math.toDegrees(robotPose.getHeading());
-
-        double relDeg = headingToGoalDeg - robotHeadingDeg + TURRET_ZERO_OFFSET_DEG;
-        return normalizeDeg180(relDeg);
-    }
-
     private double normalizeRadPi(double rad) {
         rad = (rad + Math.PI) % (2 * Math.PI);
         if (rad < 0) rad += 2 * Math.PI;
@@ -1073,34 +1087,31 @@ public class PrevOpMode extends LinearOpMode
     }
 
     private boolean applyInitialAprilLocalization(AprilTagDetection tag) {
-        // Basic safety checks
-        if (tag == null || tag.metadata == null || tag.metadata.fieldPosition == null) return false;
+        if (tag == null) return false;
 
-        // Use odometry heading as our best heading estimate for now
+        // Use Pedro pose for heading – this is already in Pedro's coordinate system
         Pose current = follower.getPose();
-        double robotHeading = current.getHeading();
+        double robotHeading = current.getHeading();  // radians, Pedro-style (0 = +X, CCW+)
 
-        // Tag field position
-        double tagX = tag.metadata.fieldPosition.get(0);
-        double tagY = tag.metadata.fieldPosition.get(1);
+        // Use HARD-CODED Pedro coordinates for the tag, not metadata.fieldPosition
+        double tagX = TAG_X_PEDRO;
+        double tagY = TAG_Y_PEDRO;
 
-        // Measured range/bearing
-        double range = tag.ftcPose.range;
+        double range = tag.ftcPose.range;  // inches
 
-        // Camera is upside down -> you noted negative bearing
+        // Bearing: how much the camera must turn (CCW+) to point at the tag
+        // Start with your current sign; we can flip it if needed.
         double bearingDeg = -tag.ftcPose.bearing;
         double bearingRad = Math.toRadians(bearingDeg);
 
-        // Global angle from robot to tag
+        // Direction from *field +X axis* to the tag, in global field frame
         double globalToTag = robotHeading + bearingRad;
 
-        // Estimate robot position (planar)
+        // Robot is 'range' away from the tag in the opposite direction of globalToTag
         double robotX = tagX - range * Math.cos(globalToTag);
         double robotY = tagY - range * Math.sin(globalToTag);
 
         Pose newPose = new Pose(robotX, robotY, robotHeading);
-
-        // This is the key line you said is "random right now"
         follower.setPose(newPose);
 
         telemetry.addData("April Init Pose", "x=%.1f y=%.1f h=%.1f",
@@ -1108,6 +1119,7 @@ public class PrevOpMode extends LinearOpMode
 
         return true;
     }
+
 
     private double computeTurretTargetFromXYH(double robotX, double robotY, double robotHeadingRad,
                                               double goalX, double goalY) {
@@ -1117,9 +1129,17 @@ public class PrevOpMode extends LinearOpMode
         double headingToGoalDeg = Math.toDegrees(Math.atan2(dy, dx));
         double robotHeadingDeg  = Math.toDegrees(robotHeadingRad);
 
-        double relDeg = headingToGoalDeg - robotHeadingDeg + TURRET_ZERO_OFFSET_DEG;
-        return normalizeDeg180(relDeg);
+
+        // Physical turret angle needed (in turret degrees)
+        double turretAngleRelDeg = headingToGoalDeg - robotHeadingDeg;
+
+        // Convert to SERVO target using gear ratio, keeping your servo-space zero offset
+        double servoTargetDeg = TURRET_ZERO_OFFSET_DEG + (2 * turretAngleRelDeg);
+
+        return normalizeDeg180(servoTargetDeg);
     }
+
+
 
 
     private void updateTurretPIDWithTargetFF(double targetAngle, double targetVelDegPerSec, double dt) {
@@ -1162,10 +1182,8 @@ public class PrevOpMode extends LinearOpMode
         // This is the SERVO SHAFT angle from the analog encoder
         double servoAngleDeg = mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
 
-        // Convert to TURRET OUTPUT angle
-        double turretAngleDeg = servoAngleDeg / 2;
 
-        return normalizeDeg180(turretAngleDeg);
+        return normalizeDeg180(servoAngleDeg);
     }
 
     private double getTurretServoAngleDegRaw() {
@@ -1193,5 +1211,22 @@ public class PrevOpMode extends LinearOpMode
         }
     }
 
+    private double applyTurretLimitWithWrap(double desiredDeg) {
+        // Always reason in [-180, 180]
+        desiredDeg = normalizeDeg180(desiredDeg);
+
+        // Where the turret actually is right now (also [-180, 180])
+        double currentDeg = getTurretAngleDeg();
+
+        // Shortest signed rotation from current to desired (e.g. +20, -30, etc.)
+        double errorToDesired = normalizeDeg180(desiredDeg - currentDeg);
+
+        // "Ideal" next target if we perfectly matched desired in one step
+        double candidateDeg = currentDeg + errorToDesired;
+
+        // Hard safety clamp to keep off the wires
+
+        return clamp(candidateDeg, -TURRET_LIMIT_DEG, TURRET_LIMIT_DEG);
+    }
     //endregion
 }

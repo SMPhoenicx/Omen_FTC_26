@@ -178,7 +178,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double outputDeadband = 0.03;
 
     // Position Presets (6 slots)
-    private final double[] SPINDEXER_POSITIONS = {40.0, 100.0, 160.0, 220.0, 280.0, 340.0};
+    private final double[] SPINDEXER_POSITIONS = {322.0, 22.0, 82.0, 142.0, 202.0, 262.0};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
