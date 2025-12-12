@@ -121,8 +121,8 @@ public class CloseBlue12Ball extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 10.52;
-    double flyKi = 0.57;
-    double flyKd = 6.1;
+    double flyKi = 1.67;
+    double flyKd = 10;
     double flyKiOffset = 0.0;
 
     private boolean shootReady = false;
@@ -148,7 +148,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -48.1;
+    private double hoodAngle = -38.1;
     private double hoodOffset = 0;
     //endregion
 
@@ -170,7 +170,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private final double outputDeadband = 0.03;
 
     // Position Presets (6 slots)
-    private final double[] SPINDEXER_POSITIONS = {340.0, 40.0, 100.0, 160.0, 220.0, 280.0};
+    private final double[] SPINDEXER_POSITIONS = {322.0, 22.0, 82.0, 142.0, 202.0, 262.0};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
@@ -235,18 +235,18 @@ public class CloseBlue12Ball extends LinearOpMode {
         startPose = new Pose(144-121,121,Math.toRadians(180-125));
 
 //        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
-        pickup1[0] = new Pose(144-90,82,Math.toRadians(180));
-        pickup1[1] = new Pose(144-118,82,Math.toRadians(180));
-        pickup1[2] = new Pose(144-84,83,Math.toRadians(180));
-        gatePose = new Pose(144-120,77,Math.toRadians(90));
+        pickup1[0] = new Pose(144-90,80,Math.toRadians(180));
+        pickup1[1] = new Pose(144-118,80,Math.toRadians(180));
+        pickup1[2] = new Pose(144-84,82,Math.toRadians(180));
+        gatePose = new Pose(144-121,77,Math.toRadians(90));
 
-        pickup2[0] = new Pose(144-70,51,Math.toRadians(180));
-        pickup2[1] = new Pose(144-127,57,Math.toRadians(180));
-        pickup2[2] = new Pose(144-75,57,Math.toRadians(180));
+        pickup2[0] = new Pose(144-70,50,Math.toRadians(180));
+        pickup2[1] = new Pose(144-127,56,Math.toRadians(180));
+        pickup2[2] = new Pose(144-70,59,Math.toRadians(180));
 
-        pickup3[0] = new Pose(144-70,20,Math.toRadians(180));
-        pickup3[1] = new Pose(144-126,35,Math.toRadians(180));
-        pickup3[2] = new Pose(144-64,35,Math.toRadians(180));
+        pickup3[0] = new Pose(144-70,17,Math.toRadians(180));
+        pickup3[1] = new Pose(144-126,33.5,Math.toRadians(180));
+        pickup3[2] = new Pose(144-71,37,Math.toRadians(180));
 
         shoot1 = new Pose(144-90,90,Math.toRadians(180));
         movePoint = new Pose(144-90,50,Math.toRadians(180));
@@ -255,9 +255,9 @@ public class CloseBlue12Ball extends LinearOpMode {
     public void createPaths(){
         //if in the future pickupPath [0] and [1] could be combines that would be hype but the reason they're seperated rn is so that pickupPath[1] can be run at a lower max speed (since we gotta drive slower when intaking
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierLine(startPose,shoot1))
+                .addPath(new BezierCurve(startPose,shoot1))
                 .setLinearHeadingInterpolation(startPose.getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.90,()-> shootReady=true)
+                .addParametricCallback(0.87,()-> shootReady=true)
                 .build();
         pickupPath1 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup1[0],pickup1[1]))
@@ -266,6 +266,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                     follower.setMaxPower(0.3);
                     intakeOn = true;
                     },0.2)
+                .setTimeoutConstraint(500)
                 .build();
         pickupPath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
@@ -286,20 +287,19 @@ public class CloseBlue12Ball extends LinearOpMode {
         gatePath = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup1[1],gatePose))
                 .setLinearHeadingInterpolation(pickup1[1].getHeading(),gatePose.getHeading())
-//                .setTimeoutConstraint(1000)
                 .build();
         scorePath1 = follower.pathBuilder()
-                .addPath(new BezierLine(gatePose,shoot1))
+                .addPath(new BezierCurve(gatePose,shoot1))
                 .setLinearHeadingInterpolation(gatePose.getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.90,()-> shootReady=true)
+                .addParametricCallback(0.96,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup2[1],pickup2[2],shoot1))
+                .addPath(new BezierCurve(pickup2[1],pickup2[0],shoot1))
                 .setLinearHeadingInterpolation(pickup2[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.93,()-> shootReady=true)
+                .addParametricCallback(0.94,()-> shootReady=true)
                 .build();
         scorePath3 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup3[1],pickup3[2],shoot1))
+                .addPath(new BezierCurve(pickup3[1],pickup3[0],shoot1))
                 .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot1.getHeading())
                 .addParametricCallback(0.95,()-> shootReady=true)
                 .build();
@@ -320,7 +320,8 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1050;
+        int flySpeed = 1105;
+        int shoot0change = 100;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -332,6 +333,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         boolean transOn = false;
         boolean autoShootOn = false;
         boolean intakeLimelightOn = false;
+        boolean gateCutoff = false;
         //endregion
 
         //region HARDWARE INFO
@@ -383,7 +385,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
 
         //region INITIALIZE PEDRO
-//        pinpoint.resetPosAndIMU();
+        pinpoint.resetPosAndIMU();
 //        pinpoint.recalibrateIMU();
 
         createPoses();
@@ -395,7 +397,9 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
         hoodOffset=0;
         tuPos = -80;
-        flyKi += 0.3;
+        flySpeed -= shoot0change;
+        flyKp -= 7;
+        flyKd += 10;
 
 
         //WAIT
@@ -421,7 +425,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -55;
+                            tuPos = -71;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -435,19 +439,24 @@ public class CloseBlue12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
-                            flyKi -= 0.3;
+                            flySpeed += shoot0change;
+                            flyKp += 7;
+                            flyKd -= 10;
 
                             subState++;
                         }
                         //INTAKE is subState 1
                         else if(subState==2){
                             follower.setMaxPower(1);
-                            follower.followPath(gatePath,true);
+                            follower.followPath(gatePath,false);
+                            tuPos-=7;
+                            gateCutoff = true;
 
-                            timeout = runtime.milliseconds()+1500;
+                            timeout = runtime.milliseconds()+1400;
                             subState++;
                         }
                         else if(subState==3){
+                            gateCutoff = false;
                             follower.followPath(scorePath1,true);
                             autoShootOn = true;
                             shootingState=0;
@@ -499,10 +508,10 @@ public class CloseBlue12Ball extends LinearOpMode {
                     //endregion
 
                     case 4:
-                        transOn=false;
+//                        transOn=false;
                         follower.followPath(moveScore);
                         pathState++;
-                        flySpeed=0;
+//                        flySpeed=0;
                         running=false;
                         break;
                 }
@@ -703,6 +712,13 @@ public class CloseBlue12Ball extends LinearOpMode {
             }
             else{
                 trans.setPower(0);
+            }
+            //endregion
+
+            //region GATE CUTOFF
+            if(runtime.milliseconds()>timeout&&gateCutoff){
+                gateCutoff = false;
+                follower.breakFollowing();
             }
             //endregion
 
