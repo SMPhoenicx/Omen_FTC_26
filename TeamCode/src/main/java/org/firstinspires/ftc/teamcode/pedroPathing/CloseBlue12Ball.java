@@ -222,6 +222,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     // Control Parameters
     private final double tuToleranceDeg = 2.0;
     private final double tuDeadband = 0.03;
+    private boolean turretAtTarget = false;
 
     // Turret Position
     private double tuPos = 0;
@@ -615,7 +616,7 @@ public class CloseBlue12Ball extends LinearOpMode {
             //endregion
 
             //region SHOOT PREP
-            if(shootingState==0&&runtime.milliseconds()>timeout){
+            if(autoShootOn&&shootingState==0&&!motifOn){
                 int greenIn=-1;
                 for(int i=0;i<3;i++){
                     if(savedBalls[i]=='g'){
@@ -635,6 +636,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                 if(diff==0) spindexerIndex=4;
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
+                spindexerAtTarget=false;
 
                 shootingState++;
             }
@@ -642,18 +644,20 @@ public class CloseBlue12Ball extends LinearOpMode {
 
             //region AUTO SHOOTING
             //prevent ball not firing
-            if(autoShootOn&&shootingState==1&&spindexerAtTarget) transOn = true;
+//            if(autoShootOn&&shootingState==1&&spindexerAtTarget) transOn = true;
 
             if(autoShootOn&&runtime.milliseconds()>timeout&&(shootReady||!follower.isBusy())){
                 intake.setPower(0);
-                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+//                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
                 if(shootingState==1&&spindexerAtTarget){
                     transOn = true;
-                    spinClock();
+                    if(turretAtTarget){
+                        spinClock();
 
-                    timeout=runtime.milliseconds()+300;
-                    shootingState++;
+                        timeout=runtime.milliseconds()+300;
+                        shootingState++;
+                    }
                 }
                 else if(shootingState==2){
                     spinClock();
@@ -934,6 +938,9 @@ public class CloseBlue12Ball extends LinearOpMode {
             out = 0.0;
             tuIntegral *= 0.2;
         }
+
+        //to know its set
+        turretAtTarget = (Math.abs(error) <= tuToleranceDeg + 5);
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
         turret1.setPower(out);
