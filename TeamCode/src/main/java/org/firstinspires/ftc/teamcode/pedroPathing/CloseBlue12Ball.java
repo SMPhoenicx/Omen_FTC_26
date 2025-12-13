@@ -121,7 +121,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
     double flyKp = 10.52;
-    double flyKi = 1.67;
+    double flyKi = 3.00;
     double flyKd = 10;
     double flyKiOffset = 0.0;
 
@@ -237,16 +237,16 @@ public class CloseBlue12Ball extends LinearOpMode {
 //        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
         pickup1[0] = new Pose(144-90,80,Math.toRadians(180));
         pickup1[1] = new Pose(144-118,80,Math.toRadians(180));
-        pickup1[2] = new Pose(144-84,82,Math.toRadians(180));
-        gatePose = new Pose(144-121,77,Math.toRadians(90));
+        pickup1[2] = new Pose(144-82,82,Math.toRadians(180));
+        gatePose = new Pose(144-120,75,Math.toRadians(90));
 
-        pickup2[0] = new Pose(144-70,50,Math.toRadians(180));
-        pickup2[1] = new Pose(144-127,56,Math.toRadians(180));
-        pickup2[2] = new Pose(144-70,59,Math.toRadians(180));
+        pickup2[0] = new Pose(144-70,47,Math.toRadians(180));
+        pickup2[1] = new Pose(144-127,55,Math.toRadians(180));
+        pickup2[2] = new Pose(144-70,58,Math.toRadians(180));
 
-        pickup3[0] = new Pose(144-70,17,Math.toRadians(180));
-        pickup3[1] = new Pose(144-126,33.5,Math.toRadians(180));
-        pickup3[2] = new Pose(144-71,37,Math.toRadians(180));
+        pickup3[0] = new Pose(144-68,10,Math.toRadians(180));
+        pickup3[1] = new Pose(144-126,32,Math.toRadians(180));
+        pickup3[2] = new Pose(144-71,38,Math.toRadians(180));
 
         shoot1 = new Pose(144-90,90,Math.toRadians(180));
         movePoint = new Pose(144-90,50,Math.toRadians(180));
@@ -291,7 +291,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         scorePath1 = follower.pathBuilder()
                 .addPath(new BezierCurve(gatePose,shoot1))
                 .setLinearHeadingInterpolation(gatePose.getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.96,()-> shootReady=true)
+                .addParametricCallback(0.98,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup2[1],pickup2[0],shoot1))
@@ -320,8 +320,8 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1105;
-        int shoot0change = 100;
+        int flySpeed = 1095;
+        int shoot0change = 50;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -397,9 +397,12 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
         hoodOffset=0;
         tuPos = -80;
+//        flyKi += 5;
+//        flyKp += 2;
+        flyKp += 5;
+        flyKi += 5;
+        flyKd += 3;
         flySpeed -= shoot0change;
-        flyKp -= 7;
-        flyKd += 10;
 
 
         //WAIT
@@ -439,9 +442,12 @@ public class CloseBlue12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
+                            flyKp -= 5;
+                            flyKi -= 5;
+                            flyKd -= 3;
+//                            flyKi -= 5;
+//                            flyKp -= 4;
                             flySpeed += shoot0change;
-                            flyKp += 7;
-                            flyKd -= 10;
 
                             subState++;
                         }
@@ -498,6 +504,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
+                            tuPos += 13;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -646,6 +653,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
                 spindexerAtTarget=false;
+                timeout = runtime.milliseconds() + 300;
 
                 shootingState++;
             }
