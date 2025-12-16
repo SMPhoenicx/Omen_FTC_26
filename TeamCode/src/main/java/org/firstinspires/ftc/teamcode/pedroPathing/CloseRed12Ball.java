@@ -234,7 +234,7 @@ public class CloseRed12Ball extends LinearOpMode {
     public void createPoses(){
         startPose = new Pose(121,121,Math.toRadians(125));
 
-//        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
+//        pickup1[0] = new Pose(94,83,Math.toRadians(180));
         pickup1[0] = new Pose(90,80,Math.toRadians(0));
         pickup1[1] = new Pose(118,80,Math.toRadians(0));
         pickup1[2] = new Pose(82,82,Math.toRadians(0));
@@ -244,8 +244,8 @@ public class CloseRed12Ball extends LinearOpMode {
         pickup2[1] = new Pose(127,57,Math.toRadians(0));
         pickup2[2] = new Pose(70,59,Math.toRadians(0));
 
-        pickup3[0] = new Pose(68,16,Math.toRadians(0));
-        pickup3[1] = new Pose(126,34.5,Math.toRadians(0));
+        pickup3[0] = new Pose(68,14,Math.toRadians(0));
+        pickup3[1] = new Pose(126,34,Math.toRadians(0));
         pickup3[2] = new Pose(71,40,Math.toRadians(0));
 
         shoot1 = new Pose(90,90,Math.toRadians(0));
@@ -320,8 +320,8 @@ public class CloseRed12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1095;
-        int shoot0change = 0;
+        int flySpeed = 1105;
+        int shoot0change = -70;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -397,7 +397,7 @@ public class CloseRed12Ball extends LinearOpMode {
         //endregion
         hoodOffset=0;
         tuPos = -84;
-        flyKp -= 7;
+        flyKp -= 5;
         flyKi -= 2.5;
         flyKd += 4;
         flySpeed -= shoot0change;
@@ -440,7 +440,7 @@ public class CloseRed12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
-                            flyKp += 7;
+                            flyKp += 5;
                             flyKi += 2.5;
                             flyKd -= 4;
 //                            flyKi -= 5;
@@ -709,7 +709,7 @@ public class CloseRed12Ball extends LinearOpMode {
             //endregion
 
             //region TURRET
-            updateTurretPID(-tuPos + 3, dtSec);
+            updateTurretPID(-tuPos + 21, dtSec);
             //endregion
 
             //region TRANSFER
@@ -1032,7 +1032,7 @@ public class CloseRed12Ball extends LinearOpMode {
         ballHeading = follower.getHeading()+(-angle*KballAngle);//in radians
 
         //prevent slamming into wall
-        if(ballX<26){//144-118 = 26
+        if(ballX<26){//118 = 26
             double distXchange = ballX-26;//negative
             double proportion = Math.abs(distXchange/distX);//positive
             double distYchange = distY * proportion;

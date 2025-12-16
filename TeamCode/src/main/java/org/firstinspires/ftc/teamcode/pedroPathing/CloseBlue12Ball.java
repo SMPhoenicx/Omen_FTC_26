@@ -244,8 +244,8 @@ public class CloseBlue12Ball extends LinearOpMode {
         pickup2[1] = new Pose(144-127,57,Math.toRadians(180));
         pickup2[2] = new Pose(144-70,59,Math.toRadians(180));
 
-        pickup3[0] = new Pose(144-68,16,Math.toRadians(180));
-        pickup3[1] = new Pose(144-126,34.5,Math.toRadians(180));
+        pickup3[0] = new Pose(144-68,14,Math.toRadians(180));
+        pickup3[1] = new Pose(144-126,34,Math.toRadians(180));
         pickup3[2] = new Pose(144-71,40,Math.toRadians(180));
 
         shoot1 = new Pose(144-90,90,Math.toRadians(180));
@@ -320,8 +320,8 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1095;
-        int shoot0change = 0;
+        int flySpeed = 1105;
+        int shoot0change = -70;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -397,7 +397,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         //endregion
         hoodOffset=0;
         tuPos = -84;
-        flyKp -= 7;
+        flyKp -= 5;
         flyKi -= 2.5;
         flyKd += 4;
         flySpeed -= shoot0change;
@@ -440,7 +440,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
-                            flyKp += 7;
+                            flyKp += 5;
                             flyKi += 2.5;
                             flyKd -= 4;
 //                            flyKi -= 5;
