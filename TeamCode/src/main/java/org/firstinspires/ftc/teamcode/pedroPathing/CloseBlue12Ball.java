@@ -70,6 +70,8 @@ public class CloseBlue12Ball extends LinearOpMode {
     private CRServo hood = null;
     private CRServo turret1 = null;
     private CRServo turret2 = null;
+    //TODO temp servo for tuning flywheel pid
+//    private Servo tempServo = null;
 
     // ENCODERS
     private GoBildaPinpointDriver pinpoint = null;
@@ -120,9 +122,9 @@ public class CloseBlue12Ball extends LinearOpMode {
 
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
-    double flyKp = 11.52;
-    double flyKi = 3.00;
-    double flyKd = 10;
+    double flyKp = 11.55;
+    double flyKi = 0;//3.00;
+    double flyKd = 0;//10;
     double flyKiOffset = 0.0;
 
     private boolean shootReady = false;
@@ -240,9 +242,12 @@ public class CloseBlue12Ball extends LinearOpMode {
         pickup1[2] = new Pose(144-82,82,Math.toRadians(180));
         gatePose = new Pose(144-120,75,Math.toRadians(90));
 
-        pickup2[0] = new Pose(144-70,47,Math.toRadians(180));
-        pickup2[1] = new Pose(144-127,57,Math.toRadians(180));
-        pickup2[2] = new Pose(144-70,59,Math.toRadians(180));
+        pickup2[0] = new Pose(144-98,80,Math.toRadians(180));
+        pickup2[1] = new Pose(144-118,80,Math.toRadians(180));
+        pickup2[2] = new Pose(144-82,82,Math.toRadians(180));
+//        pickup2[0] = new Pose(144-70,47,Math.toRadians(180));
+//        pickup2[1] = new Pose(144-127,57,Math.toRadians(180));
+//        pickup2[2] = new Pose(144-70,59,Math.toRadians(180));
 
         pickup3[0] = new Pose(144-68,14,Math.toRadians(180));
         pickup3[1] = new Pose(144-126,34,Math.toRadians(180));
@@ -269,8 +274,10 @@ public class CloseBlue12Ball extends LinearOpMode {
                 .setTimeoutConstraint(500)
                 .build();
         pickupPath2 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[1].getHeading())
+                .addPath(new BezierCurve(shoot1,pickup2[0]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[0].getHeading())
+                .addPath(new BezierCurve(pickup2[0],pickup2[1]))
+                .setConstantHeadingInterpolation(pickup2[0].getHeading())
                 .addPoseCallback(pickup2[2],()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
@@ -312,6 +319,8 @@ public class CloseBlue12Ball extends LinearOpMode {
     @Override
     public void runOpMode() throws InterruptedException {
         //region MAIN VARS
+        boolean flyOnTest = false;
+
         int pathState = 0;
         int subState = 0;
 
@@ -349,6 +358,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         hood = hardwareMap.get(CRServo.class,"hood");
         turret1 = hardwareMap.get(CRServo.class, "tu1");
         turret2 = hardwareMap.get(CRServo.class, "tu2");
+//        tempServo = hardwareMap.get(Servo.class,"tempservo");
 
         //ENCODERS
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
@@ -493,6 +503,10 @@ public class CloseBlue12Ball extends LinearOpMode {
 
                     //region CYCLE THREE
                     case 3:
+                        if(true){
+                            pathState = -1;
+                            break;
+                        }
                         if(subState==0){
                             follower.followPath(pickupPath3,false);
 
@@ -696,16 +710,39 @@ public class CloseBlue12Ball extends LinearOpMode {
             }
             //endregion
 
+            //region (REMOVE) FLYWHEEL PID CHANGING
+            if(gamepad2.triangleWasPressed()) flyKp+=.05;
+            if(gamepad2.xWasPressed()) flyKp-=.05;
+            if(gamepad2.circleWasPressed()) flyKi+=.05;
+            if(gamepad2.squareWasPressed()) flyKi-=.05;
+
+            if(gamepad2.dpadUpWasPressed()) flyKd+=.05;
+            if(gamepad2.dpadDownWasPressed()) flyKd-=.05;
+
+            telemetry.addData("fly PID","P: %.3f, I: %.3f, D: %.3f",flyKp,flyKi,flyKd);
+            //endregion
+
             //region FLYWHEEL
-            //TODO fix pid
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
             double baseF = 12.0/2450.0;
             double compensatedF = baseF * (13.0/voltage);
             fly1.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
             fly2.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
 
-            fly1.setVelocity(flySpeed);
-            fly2.setVelocity(flySpeed);
+            if(gamepad1.xWasPressed()){
+                flyOnTest = !flyOnTest;
+            }
+
+            if(flyOnTest){
+                fly1.setVelocity(flySpeed);
+                fly2.setVelocity(flySpeed);
+            }else{
+                fly1.setVelocity(0);
+                fly2.setVelocity(0);
+            }
+
+            double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+//            tempServo.setPosition(avgSpeed/(flySpeed*2));
             //endregion
 
             //region TURRET
@@ -730,7 +767,7 @@ public class CloseBlue12Ball extends LinearOpMode {
 
             //region TELEMETRY
             if(!running) telemetry.addLine("Done!");
-            double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+            avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 
             telemetry.addData("Encoder Fly Speed",avgSpeed);
             telemetry.addData("path state", pathState);
