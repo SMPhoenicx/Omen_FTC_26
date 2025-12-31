@@ -39,14 +39,13 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
-import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
@@ -66,7 +65,9 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -109,7 +110,6 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region VISION SYSTEM
     // AprilTag Configuration
-    private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
     private AprilTagDetection desiredTag;
 
     // FTC Vision Portal
@@ -172,7 +172,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Spindexer Positions (6 presets, every 60 degrees)
     // 57, 177, and 297 face the intake; others face the transfer
-    private final double[] SPINDEXER_POSITIONS = {307.0, 7.0, 67.0, 127.0, 187.0, 247.0};
+    private final double[] SPINDEXER_POSITIONS = {292.5, 352.5, 52.5, 112.5, 172.5, 232.5};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
@@ -205,15 +205,8 @@ public class MainBlueOpMode extends LinearOpMode
     // Turret Position
     private double tuPos = 0;
 
-    private static final double goalX = 0;
-    private static final double goalY = 144.0;
-
-    private static final double turretHoldDeg = 4.0;
+    private static final double turretZeroDeg = 7;
     private boolean hasTeleopLocalized = false;
-
-    private static final double TURRET_ZERO_OFFSET_DEG = 4.0;
-    private static final double TAG_X_PEDRO = 14.0;
-    private static final double TAG_Y_PEDRO = 129.0;
 
     private static final double TURRET_LIMIT_DEG = 130.0;
     //endregion
@@ -224,31 +217,15 @@ public class MainBlueOpMode extends LinearOpMode
     Pose endgamePose = new Pose(103, 37.5, Math.toRadians(90));
     //endregion
 
-    // For prediction when tag is lost
-    private double lastKnownBearing = 0.0;
-    private long lastDetectionTime = 0;
-    private static final long PREDICTION_TIMEOUT = 400; // ms, tune as needed// Extra manual tuning offset to match turret/camera alignment
-    private double txOffset = 0.0;  // Adjust based on testing
-    private ElapsedTime pidTimer = new ElapsedTime();
-    private double lastHeadingError = 0.0;
-    // Live tracking gain (simple proportional)
-    private static final double TURN_GAIN = 0.02;   // tune
-
-    // Prediction-mode PID gains
-    private static final double TURN_P = 0.02;      // tune
-    private static final double TURN_D = 0.001;     // tune
-    private static final double MAX_AUTO_TURN = 0.4; // max turn speed, tune
-
-
-
     //region SHOOTING VARS
-    private static final double[] RANGE_SAMPLES = {31, 36, 41, 46, 51, 71.5, 78, 90, 105, 118};
-    private static final double[] FLY_SPEEDS = {1100, 1125, 1140, 1182, 1210, 1280, 1314, 1349, 1460, 1540};
-    private static final double[] HOOD_ANGLES = {30, 25, 5, -30, -100, -140, -150, -160, -170, -180};
+    private static final double[] CAM_RANGE_SAMPLES =   {25, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5}; //prob not use
+    private static final double[] ODOM_RANGE_SAMPLES =  {31.6, 44.8, 50, 55.1, 60.4, 65.5, 71.1, 76.3, 81.2, 85.8, 90.3};
+    private static final double[] FLY_SPEEDS =          {1023, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254};
+    private static final double[] HOOD_ANGLES =         {89.6, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5};
 
     private double smoothedRange = 0;
     private boolean isInitialized = false;
-    private static final double ALPHA = 0.9;
+    private static final double ALPHA = 0.8;
 
     private boolean flyHoodLock = false;
 
@@ -257,8 +234,37 @@ public class MainBlueOpMode extends LinearOpMode
     private boolean autoShot = false;
     //endregion
 
-    private boolean turretMode = true;
+    //region LOCALIZATION AVERAGING
+    private static final int LOCALIZATION_SAMPLE_COUNT = 7;
+    private List<Pose> localizationSamples = new ArrayList<>();
+    private static final double MAX_SAMPLE_DEVIATION = 3.0; // inches - reject outliers
+    //endregion
+
+    private boolean trackingOn = false;
     private double localizeTime = 0;
+
+    //region LOCALIZATION DEBUG
+    private double lastLocalizeRange = 0;
+    private double lastLocalizeBearingRaw = 0;
+    private double lastLocalizeBearingUsed = 0;
+    private double lastLocalizeRobotHeading = 0;
+    private double lastLocalizeCalcX = 0;
+    private double lastLocalizeCalcY = 0;
+    private double lastLocalizeFinalX = 0;
+    private double lastLocalizeFinalY = 0;
+    private double lastLocalizeTagX = 0;
+    private double lastLocalizeTagY = 0;
+    private double lastLocalizeGlobalToTag = 0;
+    //endregion
+
+    //region VARIANT VARS (diff for red and blue)
+    private static final double goalX = 0;
+    private static final double goalY = 144.0;
+    private static final double TAG_X_PEDRO = 14.612;
+    private static final double TAG_Y_PEDRO = 127.905;
+    private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
+    //endregion
+
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -272,6 +278,7 @@ public class MainBlueOpMode extends LinearOpMode
         double intakePower = 0;
         boolean flyOn = false;
         boolean flyAtSpeed = false;
+        boolean prevflyState = false;
 
         // Drive Variables
         double drive = 0;
@@ -320,11 +327,17 @@ public class MainBlueOpMode extends LinearOpMode
         color = hardwareMap.get(NormalizedColorSensor.class, "Color 1");
         color2 = hardwareMap.get(NormalizedColorSensor.class, "Color 2");
 
-        // Configure Motor Modes
+        // Hubs
+        List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
+        for (LynxModule hub : allHubs) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        }
+
+        // Set Modes
         fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
-        // Configure Motor Directions
+        // Set Directions
         frontLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
@@ -355,28 +368,40 @@ public class MainBlueOpMode extends LinearOpMode
         //endregion
 
         while (opModeIsActive()) {
+            //region IMPORTANT VARS
+            //needed at beginning of loop, don't change location
+            for (LynxModule hub : allHubs) {
+                hub.clearBulkCache();
+            }
+
+            double nowMs = runtime.milliseconds();
+            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
+            pidLastTimeMs = nowMs;
+
+            if (dtSec <= 0.0) dtSec = 1.0 / 50.0;
+
             double turnInput = -gamepad1.right_stick_x;
 
             follower.update();
             Pose robotPose = follower.getPose();
+            //endregion
 
-            if (gamepad1.leftBumperWasPressed()) {
-                turretMode = !turretMode;
-            }
             if (gamepad1.squareWasPressed()) {
-                if (turretMode) {
-                tuPos = turretHoldDeg;
+                tuPos = turretZeroDeg;
                 hasTeleopLocalized = false;
                 localizeTime = runtime.milliseconds();
-                }
-                else {
-                    facingGoal = !facingGoal;
-                }
+                localizationSamples.clear();
             }
-            telemetry.addData("turret mode", turretMode);
 
-            telemetry.addData("facing goal", facingGoal);
+            if (gamepad1.leftBumperWasPressed()) {
+                trackingOn = !trackingOn;
+                tuIntegral = 0.0;
+                tuLastError = 0.0;
 
+                lastTuTargetInit = false;
+            }
+
+            //good
             //region VISION PROCESSING
             targetFound = false;
             desiredTag = null;
@@ -397,49 +422,59 @@ public class MainBlueOpMode extends LinearOpMode
                     telemetry.addData("Camera: ", "Tag Not Found");
                 }
             }
-
             // Process Target Data
             if (targetFound) {
-                // get info and adjust decimation
-                adjustDecimation(desiredTag.ftcPose.range);
-                double range = desiredTag.ftcPose.range;
+                double tagRange = desiredTag.ftcPose.range;   // inches from camera to tag
 
-                // smooth ranges to prevent too much fluctuation
-                if (!isInitialized) {
-                    smoothedRange = range;
-                    isInitialized = true;
-                } else {
-                    // Smooth the readings
-                    smoothedRange = smooth(range, smoothedRange);
-                }
+                // Still use vision range only for pipeline decimation
+                adjustDecimation(tagRange);
 
-                //pid integer offsets //TODO
-                if (smoothedRange > 70) {
-                    flyKiOffset = 0.45;
-                    flyKpOffset = 0.0;
-                }
-                if (smoothedRange < 40) {
-                    flyKiOffset = -0.2;
-                    flyKpOffset = 1.0;
-                }
-
-                // auto speed and hood interpolation
-                if (!flyHoodLock) {
-                    flySpeed = interpolate(smoothedRange, RANGE_SAMPLES, FLY_SPEEDS);
-                    hoodAngle = interpolate(smoothedRange, RANGE_SAMPLES, HOOD_ANGLES);
-                }
-
-                hoodAngle = hoodAngle < -190 ? -190:hoodAngle;
                 telemetry.addData("Target ID", desiredTag.id);
-                telemetry.addData("Distance", "%.1f inches", smoothedRange);
-                telemetry.addData("Range", "%.1f inches", range);
+                telemetry.addData("Tag Range", "%.1f inches", tagRange);
             }
             //endregion
 
+            //almostgood
+            //region AUTO FLYSPEED/ANGLE
+            if (hasTeleopLocalized) {
+                //dist calc from goal to bot
+                double dx = goalX - robotPose.getX();
+                double dy = goalY - robotPose.getY();
+                double odomRange = Math.hypot(dx, dy);
+
+                //smooth range so values rnt erratic
+                if (!isInitialized) {
+                    smoothedRange = odomRange;
+                    isInitialized = true;
+                } else {
+                    smoothedRange = smooth(odomRange, smoothedRange);
+                }
+
+                // increases ki at higher speeds...rework values
+                if (smoothedRange > 70) {
+                    flyKiOffset = 0.45;
+                } else if (smoothedRange < 40) {
+                    flyKiOffset = -0.2;
+                } else {
+                    flyKiOffset = 0.0;
+                }
+
+                // interpolate between measured values
+                if (!flyHoodLock) {
+                    flySpeed = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, FLY_SPEEDS);
+                    hoodAngle = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, HOOD_ANGLES);
+                    hoodAngle = Math.max(hoodAngle, -189); //clamp to prevent it going too high
+                }
+
+                telemetry.addData("Odom Range", "%.1f inches", smoothedRange);
+            }
+            //endregion
+
+            //almostgood, maybe remove present and only use color?
             //region COLOR SENSOR AND BALL TRACKING
             char detectedColor = getDetectedColor();
             boolean present = isBallPresent();
-            // Update saved ball positions based on spindexer position
+            //start detection when spindexer has reached rest position
             if (lastError < 4 && lastError > -4) {
                 if (spindexerIndex == 0) {
                     savedBalls[0] = detectedColor;
@@ -455,29 +490,18 @@ public class MainBlueOpMode extends LinearOpMode
                 }
             }
 
-            // Clear ball positions when transferring
+            // clear pos when transfer...but ts lowk isn't used
             if (tranOn && flyOn) {
-                if (spindexerIndex == 1) {
-                    savedBalls[2] = 'n';
-                    presentBalls[2] = false;
-                }
-                if (spindexerIndex == 3) {
-                    savedBalls[0] = 'n';
-                    presentBalls[0] = false;
-                }
-                if (spindexerIndex == 5) {
-                    savedBalls[1] = 'n';
-                    presentBalls[1] = false;
-                }
+                clearBallAtIndex(spindexerIndex);
             }
 
             telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
-
             telemetry.addData("PRESNT Balls", "0: %b, 1: %b, 2: %b", presentBalls[0], presentBalls[1], presentBalls[2]);
             //endregion
 
+            //good
             //region FLYWHEEL CONTROL
-            // Manual Speed Adjustment
+            // manual speed adjust and reset all adjustmentsss
             if (gamepad2.right_trigger > 0.3 && !(gamepad2.left_trigger > 0.3) && (runtime.milliseconds() - lastTime > 200)) {
                 flyOffset += 10;
                 lastTime = runtime.milliseconds();
@@ -491,7 +515,6 @@ public class MainBlueOpMode extends LinearOpMode
                 hoodOffset = 0;
             }
 
-
             // Flywheel Toggle
             if (gamepad2.crossWasPressed()) {
                 flyOn = !flyOn;
@@ -501,7 +524,7 @@ public class MainBlueOpMode extends LinearOpMode
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
             double baseF = 12.0 / 2450.0;
             double compensatedF = baseF * (13.0 / voltage);
-            //Set custom PID values
+            //set pid, might change this to custom pid to improve loop times, but that also means retuning pid cuz dt
             fly1.setVelocityPIDFCoefficients(flyKp + flyKpOffset, flyKi + flyKiOffset, flyKd, compensatedF);
             fly2.setVelocityPIDFCoefficients(flyKp + flyKpOffset, flyKi + flyKiOffset, flyKd, compensatedF);
 
@@ -514,21 +537,28 @@ public class MainBlueOpMode extends LinearOpMode
                 fly2.setVelocity(0);
             }
 
-            // Check if Flywheel at Speed
+            // check if flywheel is at speed
             double flyTotal = flySpeed + flyOffset;
             flyAtSpeed = (flyTotal - fly1.getVelocity() < 50) && (flyTotal - fly1.getVelocity() > -50) &&
                     (flyTotal - fly2.getVelocity() < 50) && (flyTotal - fly2.getVelocity() > -50);
 
-            // Update LED Indicator
+            // ...and update led
             if (!flyOn) {
                 led.setPosition(1); // white
             } else if (flyAtSpeed) {
+                if (prevflyState != flyAtSpeed) {
+                    //TODO TEST IF TS WORKS
+                    gamepad1.rumble(300);
+                    gamepad2.rumble(300);
+                }
                 led.setPosition(0.5); // blue
             } else {
                 led.setPosition(0.3); // red (ish)
             }
+            prevflyState = flyAtSpeed;
             //endregion
 
+            //good
             //region HOOD CONTROL
             // Hood Position Selection
             if (gamepad1.dpadUpWasPressed()) {
@@ -536,20 +566,12 @@ public class MainBlueOpMode extends LinearOpMode
             }
             if (gamepad1.dpadDownWasPressed()) {
                 hoodOffset += 5;
-
             }
-
             // Update Hood PID
-            // At top of loop:
-            double nowMs = runtime.milliseconds();
-            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
-            pidLastTimeMs = nowMs;
-
-            if (dtSec <= 0.0) dtSec = 1.0 / 50.0;
-
             updateHoodPID(hoodAngle + hoodOffset, dtSec);
             //endregion
 
+            // good
             //region INTAKE CONTROL
             if (gamepad1.rightBumperWasPressed()) {
                 intakeOn = !intakeOn;
@@ -563,6 +585,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
             //endregion
 
+            //good
             //region TRANSFER CONTROL
             if (gamepad2.triangleWasPressed()) {
                 tranOn = !tranOn;
@@ -574,6 +597,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
             //endregion
 
+            //almostgood, check for driver spindexer control while intaking. fix with offset?
             //region SPINDEXER CONTROL
             // Spindexer Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
@@ -589,31 +613,29 @@ public class MainBlueOpMode extends LinearOpMode
                 autoShootNum = 3;
             }
 
+            //reset all when autoshot
+            if (autoShootNum == 1) {
+                Arrays.fill(savedBalls, 'n');
+                Arrays.fill(presentBalls, false);
+            }
+
+            //shoot all 3 balls with 270 ms delay between each. Aim to optimize and reduce time. might be mech thing tho
             if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 270)) {
                 spinClock();
                 autoShootNum--;
                 autoShootTime = runtime.milliseconds();
             }
 
-            if (autoShootNum == 1) {
-                Arrays.fill(savedBalls, 'n');
-                Arrays.fill(presentBalls, false);
-            }
-
             if (autoShootNum <= 0) {
                 autoShot = false;
             }
-//            if (gamepad2.dpadDownWasPressed()) {
-//                prevSpindexerIndex = spindexerIndex;
-//                spindexerIndex += spindexerIndex % 2 == 0 ? 1 : 0;
-//                spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
-//                spinBallLED();
-//            }
+
+            //spin to empty slot while intaking.
             if (intakeOn) {
                 int currentSlot = -1;
                 // look for first empty slot in savedBalls
                 for (int i = 0; i < savedBalls.length; i++) {
-                    if (savedBalls[i] == 'n') {   // 'n' = empty
+                    if (savedBalls[i] == 'n') {
                         currentSlot = i;
                         break;
                     }
@@ -625,37 +647,43 @@ public class MainBlueOpMode extends LinearOpMode
 
             }
 
-            // Update Spindexer PID
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
             updateSpindexerPID(targetAngle, dtSec);
             //endregion
 
+            //idek for this one bro
             //region GOAL TRACKING
-            // Always aim at the blue corner (0, 144)
-            if (!hasTeleopLocalized && gamepad1.right_stick_x < 0.06 && gamepad1.left_stick_y < 0.06 && gamepad1.left_stick_x < 0.06) {
-                // Hold turret at a known angle for consistent camera pose
-                tuPos = turretHoldDeg;
+            if (trackingOn) {
+                if (!hasTeleopLocalized) {
+                    tuPos = turretZeroDeg;
+                    if (Math.abs(gamepad1.right_stick_x) < 0.06
+                            && Math.abs(gamepad1.left_stick_y) < 0.06
+                            && Math.abs(gamepad1.left_stick_x) < 0.06) {
+                        if (runtime.milliseconds() - localizeTime > 300) {
+                            if (targetFound && desiredTag != null && desiredTag.metadata != null) {
+                                boolean ok = applyInitialAprilLocalization(desiredTag);
+                                if (ok) {
+                                    hasTeleopLocalized = true;
 
-                if (runtime.milliseconds() - localizeTime > 300) {
-                    // Attempt localization if tag is visible
-                    if (targetFound && desiredTag != null && desiredTag.metadata != null) {
-                        boolean ok = applyInitialAprilLocalization(desiredTag);
-                        if (ok) {
-                            hasTeleopLocalized = true;
-
-                            tuIntegral = 0.0;
-                            tuLastError = 0.0;
-                            lastTuTargetInit = false;  // resets target-rate FF history
+                                    tuIntegral = 0.0;
+                                    tuLastError = 0.0;
+                                    lastTuTargetInit = false;
+                                    isInitialized = false;
+                                }
+                            }
                         }
                     }
                 }
-            }
-            else {
-                double heading = robotPose.getHeading();
-                tuPos = computeTurretTargetFromXYH(robotPose.getX(), robotPose.getY(), heading, goalX, goalY);
+                else {
+                    tuPos = calcTuTarget(
+                            robotPose.getX(), robotPose.getY(),
+                            robotPose.getHeading()
+                    );
+                }
             }
             //endregion
 
+            //fix lol
             //region ENDGAME NAVIGATION
             if (gamepad1.dpadLeftWasPressed() && gamepad1.circleWasPressed() && !follower.isBusy() && localizeApril) {
                 endgame = follower.pathBuilder()
@@ -673,101 +701,38 @@ public class MainBlueOpMode extends LinearOpMode
             }
             //endregion
 
-            //region GOAL TRACKING
-            if (facingGoal) {
-                if (targetFound && desiredTag != null && desiredTag.ftcPose != null) {
-                    // -----------------------------------------------------------------
-                    // Compute tx using the webcam AprilTag bearing instead of Limelight
-                    // -----------------------------------------------------------------
-                    // FTC convention: ftcPose.bearing is the horizontal angle from camera to tag (deg)
-                    // If your camera is mounted upside down or mirrored, you may need the minus sign.
-                    double txRaw = -desiredTag.ftcPose.bearing;   // negate if camera is upside-down
-                    double tx    = txRaw + txOffset;              // keep your existing offset
-
-                    // Save for prediction when tag is lost
-                    lastKnownBearing = tx;
-                    lastDetectionTime = System.currentTimeMillis();
-
-                    // Heading error for driving control (same logic as before)
-                    double headingError = -tx;
-                    double deltaTime = pidTimer.seconds();
-                    double derivative = (headingError - lastHeadingError) / deltaTime;
-                    pidTimer.reset();
-
-                    // PID-style turning (you can still tune TURN_GAIN / MAX_AUTO_TURN)
-                    if (Math.abs(headingError) < 2.0) {
-                        turn = 0;
-                    } else {
-                        turn = Range.clip(headingError * TURN_GAIN, -MAX_AUTO_TURN, MAX_AUTO_TURN);
-                    }
-
-                    lastHeadingError = headingError;
-
-                    telemetry.addData("Tracking", "LIVE (err: %.1f°, deriv: %.2f)", headingError, derivative);
-                    telemetry.addData("Tag Bearing (raw)", "%.1f°", txRaw);
-                    telemetry.addData("Tag Bearing (tx)", "%.1f°", tx);
-
-                } else {
-                    // -----------------------------
-                    // Prediction when target lost
-                    // -----------------------------
-                    long timeSinceLost = System.currentTimeMillis() - lastDetectionTime;
-
-                    if (timeSinceLost < PREDICTION_TIMEOUT) {
-                        double headingError = lastKnownBearing;  // same as your original logic
-                        double deltaTime = pidTimer.seconds();
-                        double derivative = (headingError - lastHeadingError) / deltaTime;
-                        pidTimer.reset();
-
-                        if (Math.abs(headingError) < 2.0) {
-                            turn = 0;
-                        } else {
-                            double turnCmd = (TURN_P * headingError) + (TURN_D * derivative);
-                            turn = Range.clip(turnCmd * -1, -MAX_AUTO_TURN, MAX_AUTO_TURN);
-                        }
-
-                        lastHeadingError = headingError;
-                        telemetry.addData("Tracking", "PREDICTED (lost %dms ago)", timeSinceLost);
-                        telemetry.addData("Last Bearing", "%.1f°", lastKnownBearing);
-                    } else {
-                        // Give up tracking
-                        turn = 0;
-                        lastHeadingError = 0;
-                        pidTimer.reset();
-                        telemetry.addData("Tracking", "LOST");
-                    }
-                }
-            } else {
-                // Manual control
-                turn = -gamepad1.right_stick_x;
-                lastHeadingError = 0;
-                pidTimer.reset();
-            }
-//endregion
-
+            //aahhhfdhshafdosiuafhidsjf
             //region TURRET CONTROl
+            if (!trackingOn) {
+                //zeros position
+                tuPos = normalizeDeg180(turretZeroDeg);
+            }
 
             double rawTurretTargetDeg = tuPos;
-
+            //wraps position
             double safeTurretTargetDeg = applyTurretLimitWithWrap(rawTurretTargetDeg);
-
             tuPos = safeTurretTargetDeg;
 
             double targetVelDegPerSec = 0.0;
 
+            //feedforward
             if (!lastTuTargetInit) {
-                lastTuTarget = tuPos;
+                lastTuTarget = safeTurretTargetDeg;
                 lastTuTargetInit = true;
-            } else {
-                double dTarget = normalizeDeg180(tuPos - lastTuTarget);
+            } else if (trackingOn) {
+                double dTarget = normalizeDeg180(safeTurretTargetDeg - lastTuTarget);
                 targetVelDegPerSec = dTarget / Math.max(dtSec, 1e-3);
+                lastTuTarget = safeTurretTargetDeg;
+            } else {
+                // no FF when not tracking
+                targetVelDegPerSec = 0.0;
                 lastTuTarget = safeTurretTargetDeg;
             }
 
             updateTurretPIDWithTargetFF(tuPos, targetVelDegPerSec, dtSec);
-
             //endregion
 
+            //good
             //region DRIVE CONTROL
             // Get manual drive inputs
             drive = -gamepad1.left_stick_y;
@@ -785,6 +750,17 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
+            if (hasTeleopLocalized) {
+                telemetry.addData("-------LAST LOCALIZATION------", "");
+                telemetry.addData("Range", "%.2f in", lastLocalizeRange);
+                telemetry.addData("Bearing raw", "%.2f°", lastLocalizeBearingRaw);
+                telemetry.addData("Bearing used", "%.2f°", lastLocalizeBearingUsed);
+                telemetry.addData("Robot heading", "%.2f°", lastLocalizeRobotHeading);
+                telemetry.addData("Global→Tag angle", "%.2f°", lastLocalizeGlobalToTag);
+                telemetry.addData("Tag pos", "x=%.1f y=%.1f", lastLocalizeTagX, lastLocalizeTagY);
+                telemetry.addData("Calc robot", "x=%.1f y=%.1f", lastLocalizeCalcX, lastLocalizeCalcY);
+                telemetry.addData("Final robot", "x=%.1f y=%.1f", lastLocalizeFinalX, lastLocalizeFinalY);
+            }
             telemetry.update();
         }
     }
@@ -817,6 +793,7 @@ public class MainBlueOpMode extends LinearOpMode
         backRightDrive.setPower(backRightPower);
     }
 
+    //region SPINDEXER HELPERS
     public void spinClock() {
         prevSpindexerIndex = spindexerIndex;
         spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
@@ -829,7 +806,6 @@ public class MainBlueOpMode extends LinearOpMode
         spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
         spinBallLED();
     }
-
     private void updateSpindexerPID(double targetAngle, double dt) {
         double ccwOffset = -6.0;
         // read angles 0..360
@@ -882,6 +858,7 @@ public class MainBlueOpMode extends LinearOpMode
         telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
 
     }
+    //endregion
 
     private void updateHoodPID(double targetAngle, double dt) {
         // Read hood angle from encoder (0..360)
@@ -925,6 +902,7 @@ public class MainBlueOpMode extends LinearOpMode
         telemetry.addData("Hood Target", "%.1f°", targetAngle);
     }
 
+    //region COLOR AND ARTIFACT RELATED
     private void spinBallLED(){
         if(spindexerIndex % 2 == 0){
             int avgIndex = (spindexerIndex + prevSpindexerIndex)/ 2;
@@ -991,7 +969,9 @@ public class MainBlueOpMode extends LinearOpMode
 
         return colors1.alpha > 0.15 || colors2.alpha > 0.15;
     }
+    //endregion
 
+    //region GENERAL MATH METHODS
     private double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
     }
@@ -1029,8 +1009,9 @@ public class MainBlueOpMode extends LinearOpMode
     private double smooth(double newValue, double previousValue) {
         return ALPHA * newValue + (1 - ALPHA) * previousValue;
     }
+    //endregion
 
-    //Webcam methods
+    //region CAM HELPERS
     private void initAprilTag() {
 
         Position cameraPosition = new Position(
@@ -1044,7 +1025,7 @@ public class MainBlueOpMode extends LinearOpMode
         YawPitchRollAngles orientation = new YawPitchRollAngles(
                 AngleUnit.DEGREES,
                 0, //yaw, left and right
-                -70, //pitch, forward, back
+                70, //pitch, forward, back
                 180, //roll, orientation
                 0
         );
@@ -1120,73 +1101,170 @@ public class MainBlueOpMode extends LinearOpMode
         telemetry.addData("Decimation: ", "%d", newDecimation);
 
     }
-
     private double normalizeDeg180(double deg) {
         deg = (deg + 180) % 360;
         if (deg < 0) deg += 360;
         return deg - 180;
     }
+    //endregion
 
-    private double normalizeRadPi(double rad) {
-        rad = (rad + Math.PI) % (2 * Math.PI);
-        if (rad < 0) rad += 2 * Math.PI;
-        return rad - Math.PI;
+    //region STORED ARTIFACTS
+    private int slotFromIndex(int idx) {
+        switch (idx) {
+            case 1: return 2;
+            case 3: return 0;
+            case 5: return 1;
+            default: return -1;
+        }
     }
 
+    private void clearBallAtIndex(int idx) {
+        int slot = slotFromIndex(idx);
+        if (slot != -1) {
+            savedBalls[slot] = 'n';
+            presentBalls[slot] = false;
+        }
+    }
+    //endregion
+
+    //region TURRET AND LOCALIZATION KMSKMSKMSKMKMS
     private boolean applyInitialAprilLocalization(AprilTagDetection tag) {
         if (tag == null) return false;
 
-        // Use Pedro pose for heading – this is already in Pedro's coordinate system
+        // Use Pedro pose for heading
         Pose current = follower.getPose();
-        double robotHeading = current.getHeading();  // radians, Pedro-style (0 = +X, CCW+)
+        double robotHeading = current.getHeading();
 
-        // Use HARD-CODED Pedro coordinates for the tag, not metadata.fieldPosition
         double tagX = TAG_X_PEDRO;
         double tagY = TAG_Y_PEDRO;
-
-        double range = tag.ftcPose.range;  // inches
-
-        // Bearing: how much the camera must turn (CCW+) to point at the tag
-        // Start with your current sign; we can flip it if needed.
-        double bearingDeg = -tag.ftcPose.bearing;
+        double range = tag.ftcPose.range;
+        double bearingDeg = tag.ftcPose.bearing;
         double bearingRad = Math.toRadians(bearingDeg);
 
-        // Direction from *field +X axis* to the tag, in global field frame
-        double globalToTag = robotHeading + bearingRad;
+// Angle from camera to tag in global field frame
+        double cameraToTagAngle = robotHeading + bearingRad;
 
-        // Robot is 'range' away from the tag in the opposite direction of globalToTag
-        double robotX = tagX - range * Math.cos(globalToTag);
-        double robotY = tagY - range * Math.sin(globalToTag);
+// Camera is 'range' away from tag in the OPPOSITE direction
+        double cameraX = tagX - range * Math.cos(cameraToTagAngle);
+        double cameraY = tagY - range * Math.sin(cameraToTagAngle);
 
-        Pose newPose = new Pose(robotX, robotY, robotHeading);
-        follower.setPose(newPose);
+// Camera offset: 5.5" forward in robot frame
+        double cameraOffsetY = 5.5;
+        double cosH = Math.cos(robotHeading);
+        double sinH = Math.sin(robotHeading);
 
-        telemetry.addData("April Init Pose", "x=%.1f y=%.1f h=%.1f",
-                robotX, robotY, Math.toDegrees(robotHeading));
+        double fieldOffsetX = -cameraOffsetY * sinH;
+        double fieldOffsetY = cameraOffsetY * cosH;
 
-        return true;
+// Robot center
+        double robotX = cameraX - fieldOffsetX;
+        double robotY = cameraY - fieldOffsetY;
+
+        Pose candidatePose = new Pose(robotX, robotY, robotHeading);
+
+        // Add to samples list
+        localizationSamples.add(candidatePose);
+
+        // Need more samples?
+        if (localizationSamples.size() < LOCALIZATION_SAMPLE_COUNT) {
+            telemetry.addData("Localizing", "Sample %d/%d",
+                    localizationSamples.size(), LOCALIZATION_SAMPLE_COUNT);
+            return false; // keep collecting
+        }
+
+        // We have enough samples - filter outliers and average
+        Pose averagedPose = filterAndAveragePoses(localizationSamples);
+
+        if (averagedPose != null) {
+            follower.setPose(averagedPose);
+            telemetry.addData("Localized!", "x=%.1f y=%.1f h=%.1f",
+                    averagedPose.getX(), averagedPose.getY(),
+                    Math.toDegrees(averagedPose.getHeading()));
+
+            // Save debug values
+            lastLocalizeRange = range;
+            lastLocalizeBearingRaw = tag.ftcPose.bearing;
+            lastLocalizeBearingUsed = bearingDeg;
+            lastLocalizeRobotHeading = Math.toDegrees(robotHeading);
+            lastLocalizeCalcX = robotX;
+            lastLocalizeCalcY = robotY;
+            lastLocalizeFinalX = averagedPose.getX();
+            lastLocalizeFinalY = averagedPose.getY();
+            lastLocalizeTagX = tagX;
+            lastLocalizeTagY = tagY;
+            // Clear samples for next time
+            localizationSamples.clear();
+            return true;
+        } else {
+            telemetry.addData("Localization", "Failed - too much variance, restarting...");
+            localizationSamples.clear();
+            return false;
+        }
     }
 
+    private Pose filterAndAveragePoses(List<Pose> samples) {
+        if (samples.isEmpty()) return null;
 
-    private double computeTurretTargetFromXYH(double robotX, double robotY, double robotHeadingRad,
-                                              double goalX, double goalY) {
+        // Calculate median position to find center
+        List<Double> xVals = new ArrayList<>();
+        List<Double> yVals = new ArrayList<>();
+
+        for (Pose p : samples) {
+            xVals.add(p.getX());
+            yVals.add(p.getY());
+        }
+
+        Collections.sort(xVals);
+        Collections.sort(yVals);
+
+        double medianX = xVals.get(xVals.size() / 2);
+        double medianY = yVals.get(yVals.size() / 2);
+
+        // Filter out outliers (anything too far from median)
+        List<Pose> filteredSamples = new ArrayList<>();
+        for (Pose p : samples) {
+            double distFromMedian = Math.hypot(p.getX() - medianX, p.getY() - medianY);
+            if (distFromMedian <= MAX_SAMPLE_DEVIATION) {
+                filteredSamples.add(p);
+            } else {
+                telemetry.addData("Rejected Outlier", "dist=%.2f", distFromMedian);
+            }
+        }
+
+        // Need at least 3 good samples
+        if (filteredSamples.size() < 3) {
+            return null; // too much variance
+        }
+
+        // Average the filtered samples
+        double sumX = 0, sumY = 0, sumH = 0;
+        for (Pose p : filteredSamples) {
+            sumX += p.getX();
+            sumY += p.getY();
+            sumH += p.getHeading();
+        }
+
+        int n = filteredSamples.size();
+        return new Pose(sumX / n, sumY / n, sumH / n);
+    }
+
+    private double calcTuTarget(double robotX, double robotY, double robotHeadingRad) {
         double dx = goalX - robotX;
         double dy = goalY - robotY;
 
-        double headingToGoalDeg = Math.toDegrees(Math.atan2(dy, dx));
-        double robotHeadingDeg  = Math.toDegrees(robotHeadingRad);
+        double headingToGoal = Math.toDegrees(Math.atan2(dy, dx));
+        double robotHeading  = Math.toDegrees(robotHeadingRad);
 
+        //actual turret angle needed
+        double turretAngleReal = headingToGoal - robotHeading;
 
-        // Physical turret angle needed (in turret degrees)
-        double turretAngleRelDeg = headingToGoalDeg - robotHeadingDeg;
+        //converts to angle servos need to turn to to achieve turret angle
+        double servoAngle = turretZeroDeg + (2 * turretAngleReal);
 
-        // Convert to SERVO target using gear ratio, keeping your servo-space zero offset
-        double servoTargetDeg = TURRET_ZERO_OFFSET_DEG + (2 * turretAngleRelDeg);
-
-        return normalizeDeg180(servoTargetDeg);
+        return normalizeDeg180(servoAngle);
     }
 
-
+    //TODO check ff and calculations for this, make as fast as possible
     private void updateTurretPIDWithTargetFF(double targetAngle, double targetVelDegPerSec, double dt) {
         double angle = getTurretAngleDeg();
 
@@ -1202,7 +1280,7 @@ public class MainBlueOpMode extends LinearOpMode
         // stiction FF
         if (Math.abs(error) > 1.0) out += tuKf * Math.signum(error);
 
-        // NEW: target-rate FF (helps match d(turret)/d(target))
+        // target-rate FF (helps match d(turret)/d(target))
         out += tuKv * targetVelDegPerSec;
 
         out = Range.clip(out, -1.0, 1.0);
@@ -1220,39 +1298,12 @@ public class MainBlueOpMode extends LinearOpMode
 
     }
 
+    //TODO IF TIME, check the voltage min max
     private double getTurretAngleDeg() {
-        // This is the SERVO SHAFT angle from the analog encoder
-        double servoAngleDeg = mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
-
-
-        return normalizeDeg180(servoAngleDeg);
+        return normalizeDeg180(mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29));
     }
 
-    private double getTurretServoAngleDegRaw() {
-        return mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
-    }
-
-    private int slotFromIndex(int idx) {
-        // Your existing mapping:
-        // index 1 -> slot 2
-        // index 3 -> slot 0
-        // index 5 -> slot 1
-        switch (idx) {
-            case 1: return 2;
-            case 3: return 0;
-            case 5: return 1;
-            default: return -1; // not a firing index
-        }
-    }
-
-    private void clearBallAtIndex(int idx) {
-        int slot = slotFromIndex(idx);
-        if (slot != -1) {
-            savedBalls[slot] = 'n';
-            presentBalls[slot] = false;
-        }
-    }
-
+    //TODO make this wrap better
     private double applyTurretLimitWithWrap(double desiredDeg) {
         // Always reason in [-180, 180]
         desiredDeg = normalizeDeg180(desiredDeg);
@@ -1267,8 +1318,9 @@ public class MainBlueOpMode extends LinearOpMode
         double candidateDeg = currentDeg + errorToDesired;
 
         // Hard safety clamp to keep off the wires
-
         return clamp(candidateDeg, -TURRET_LIMIT_DEG, TURRET_LIMIT_DEG);
     }
+    //endregion
+
     //endregion
 }
