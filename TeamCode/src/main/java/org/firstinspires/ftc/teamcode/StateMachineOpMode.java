@@ -40,6 +40,7 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.lynx.LynxModule;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.AnalogInput;
@@ -71,8 +72,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@TeleOp(name="MainBlueOpMode", group = "A")
-public class MainBlueOpMode extends LinearOpMode
+@TeleOp(name="StateMachineOpMode", group = "A")
+@Disabled
+public class StateMachineOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
 
@@ -220,9 +222,6 @@ public class MainBlueOpMode extends LinearOpMode
 
     private boolean flyHoodLock = false;
 
-    private int autoShootNum = 3;
-    private double autoShootTime = 0;
-    private boolean autoShot = false;
     //endregion
 
     //region LOCALIZATION AVERAGING
@@ -258,6 +257,39 @@ public class MainBlueOpMode extends LinearOpMode
 
     private int greenPos = 0;
 
+    //region STATE MACHINE VARS
+    enum BallSystemState {
+        IDLE,
+        INTAKING,
+        INTAKE_BALL_WAIT,
+        INTAKE_OVERRIDE,
+        AUTO_SHOOTING,
+        POST_SHOOT_CLEANUP
+    }
+
+    BallSystemState ballState = BallSystemState.IDLE;
+
+    // Outputs
+    double intakePower = 0.0;
+    double transferPower = 0.0;
+
+    // Timing
+    double stateEnterTimeMs = 0;
+    double lastShotTimeMs = 0;
+
+    // Auto-shoot
+    int shotsRemaining = 0;
+
+    // Intake indexing
+    int targetEmptySlot = -1;
+
+    boolean intakeTogglePressed;
+    boolean shootPressed;
+    boolean manualSpinLeft;
+    boolean manualSpinRight;
+    boolean manualTransferToggle;
+    //endregion
+
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -265,8 +297,6 @@ public class MainBlueOpMode extends LinearOpMode
         boolean targetFound = false;
 
         // Mechanism States
-        boolean tranOn = false;
-        boolean intakeOn = false;
         boolean flyOn = false;
         boolean flyAtSpeed = false;
         boolean prevflyState = false;
@@ -381,6 +411,14 @@ public class MainBlueOpMode extends LinearOpMode
             Pose robotPose = follower.getPose();
             //endregion
 
+            intakeTogglePressed   = gamepad1.rightBumperWasPressed();
+            shootPressed          = gamepad2.dpadUpWasPressed();
+            manualSpinLeft        = gamepad2.dpadLeftWasPressed();
+            manualSpinRight       = gamepad2.dpadRightWasPressed();
+            manualTransferToggle  = gamepad2.triangleWasPressed();
+
+            updateBallFSM();
+
             //region TRACKING SETTINGS
             if (gamepad1.squareWasPressed()) {
                 tuPos = turretZeroDeg;
@@ -460,23 +498,20 @@ public class MainBlueOpMode extends LinearOpMode
             }
             //endregion
 
-            //almostgood, maybe remove present and only use color?
             //region COLOR SENSOR AND BALL TRACKING
             char detectedColor = getDetectedColor();
             boolean present = isBallPresent();
 
             //start detection when spindexer has reached rest position
-            if (lastError < 4 && lastError > -4) {
+            if ((ballState == BallSystemState.INTAKING ||
+                    ballState == BallSystemState.INTAKE_BALL_WAIT)
+                    && Math.abs(lastError) < 4) {
+
                 setBallAtIndex(spindexerIndex, detectedColor, present);
             }
 
-            // clear pos when transfer...but ts lowk isn't used
-            if (tranOn && flyOn) {
-                clearBallAtIndex(spindexerIndex);
-            }
-
             telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
-            telemetry.addData("PRESNT Balls", "0: %b, 1: %b, 2: %b", presentBalls[0], presentBalls[1], presentBalls[2]);
+            telemetry.addData("PRESENT Balls", "0: %b, 1: %b, 2: %b", presentBalls[0], presentBalls[1], presentBalls[2]);
             //endregion
 
             //good
@@ -552,103 +587,9 @@ public class MainBlueOpMode extends LinearOpMode
             updateHoodPID(hoodAngle + hoodOffset, dtSec);
             //endregion
 
-            // good
-            //region INTAKE CONTROL
-            if (gamepad1.rightBumperWasPressed()) {
-                intakeOn = !intakeOn;
-                tranOn = false;
-            }
-
-            if (intakeOn) {
-                intake.setPower(1);
-            }
-            else {
-                intake.setPower(0);
-            }
-            //endregion
-
-            //almostgood, check for driver spindexer control while intaking. fix with offset or debounce OR state machine
-            //region SPINDEXER AND TRANSFER CONTROL
-            // Spindexer Navigation
-            //Left and Right go to intake positions, aka the odd numbered indices on the pos array
-            if (gamepad2.dpadLeftWasPressed()) {
-                spinCounterClock();
-            }
-            if (gamepad2.dpadRightWasPressed()) {
-                spinClock();
-            }
-            //intake positions are the even ones
-            if (gamepad2.dpadUpWasPressed()) {
-                autoShot = true;
-                autoShootNum = 3;
-                tranOn = true;
-//                int greenIn=-1;
-//                for(int i=0;i<3;i++){
-//                    if(savedBalls[i]=='g'){
-//                        greenIn=i;
-//                    }
-//                }
-//                if(greenIn==-1){
-//                    for(int i=0;i<3;i++){
-//                        if(savedBalls[i]=='n'){
-//                            greenIn=i;
-//                        }
-//                    }
-//                }
-//                if(greenIn==-1) greenIn=0;
-//
-//                int diff = (greenIn + greenPos) % 3;
-//                if(diff==0) spindexerIndex=4;
-//                else if(diff==1) spindexerIndex=0;
-//                else spindexerIndex=2;
-            }
-
-            //good
-            //region TRANSFER CONTROL
-            if (gamepad2.triangleWasPressed()) {
-                tranOn = !tranOn;
-            }
-            if (tranOn && flyOn) {
-                trans.setPower(1);
-            } else {
-                trans.setPower(0);
-            }
-            //endregion
-
-            //reset all when autoshot
-            if (autoShootNum == 1) {
-                Arrays.fill(savedBalls, 'n');
-                Arrays.fill(presentBalls, false);
-            }
-
-            //shoot all 3 balls with 270 ms delay between each. Aim to optimize and reduce time. might be mech thing tho
-            if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 270)) {
-                spinClock();
-                autoShootNum--;
-                autoShootTime = runtime.milliseconds();
-            }
-
-            if (autoShootNum <= 0) {
-                autoShot = false;
-                tranOn = false;
-            }
-
-            //spin to empty slot while intaking.
-            if (intakeOn) {
-                int currentSlot = -1;
-                // look for first empty slot in savedBalls
-                for (int i = 0; i < savedBalls.length; i++) {
-                    if (savedBalls[i] == 'n') {
-                        currentSlot = i;
-                        break;
-                    }
-                }
-                if (currentSlot != -1) {
-                    prevSpindexerIndex = spindexerIndex;
-                    spindexerIndex = currentSlot * 2;
-                }
-
-            }
+            //region INTAKE, TRANS, SPINDEXER
+            intake.setPower(intakePower);
+            trans.setPower(transferPower);
 
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
             updateSpindexerPID(targetAngle, dtSec);
@@ -1340,13 +1281,122 @@ public class MainBlueOpMode extends LinearOpMode
     }
     //endregion
 
-    boolean hasEmptySlot() {
-        for (char c : savedBalls) {
-            if (c == 'n') return true;
-        }
-        return false;
+    void setState(BallSystemState newState) {
+        ballState = newState;
+        stateEnterTimeMs = runtime.milliseconds();
     }
 
+    void updateBallFSM() {
+        switch (ballState) {
+            case IDLE:
+                intakePower = 0;
+                transferPower = 0;
+
+                if (intakeTogglePressed) {
+                    setState(BallSystemState.INTAKING);
+                }
+
+                if (manualSpinLeft) spinCounterClock();
+                else if (manualSpinRight) spinClock();
+
+                else if (shootPressed) {
+                    shotsRemaining = 3;
+                    lastShotTimeMs = runtime.milliseconds();
+                    setState(BallSystemState.AUTO_SHOOTING);
+                }
+                break;
+
+            case INTAKING:
+                intakePower = 1.0;
+                transferPower = 0;
+
+                if (manualSpinLeft || manualSpinRight) {
+                    if (manualSpinLeft) spinCounterClock();
+                    if (manualSpinRight) spinClock();
+                    setState(BallSystemState.INTAKE_OVERRIDE);
+                    break;
+                }
+
+                // Find empty slot
+                targetEmptySlot = -1;
+                for (int i = 0; i < savedBalls.length; i++) {
+                    if (savedBalls[i] == 'n') {
+                        targetEmptySlot = i;
+                        spindexerIndex = i * 2;
+                        break;
+                    }
+                }
+
+                if (Math.abs(lastError) < 4 && targetEmptySlot != -1) {
+                    setState(BallSystemState.INTAKE_BALL_WAIT);
+                }
+
+                if (intakeTogglePressed) {
+                    setState(BallSystemState.IDLE);
+                }
+                break;
+
+            case INTAKE_BALL_WAIT:
+                intakePower = 1.0;
+                transferPower = 0;
+
+                if (targetEmptySlot >= 0 && savedBalls[targetEmptySlot] != 'n') {
+                    setState(BallSystemState.INTAKING);
+                }
+
+                if (manualSpinLeft || manualSpinRight) {
+                    if (manualSpinLeft) spinCounterClock();
+                    if (manualSpinRight) spinClock();
+                    setState(BallSystemState.INTAKE_OVERRIDE);
+                }
+
+                if (intakeTogglePressed) {
+                    setState(BallSystemState.IDLE);
+                }
+                break;
+
+            case INTAKE_OVERRIDE:
+                intakePower = 1.0;
+                transferPower = 0;
+
+                if (runtime.milliseconds() - stateEnterTimeMs > 2000) {
+                    setState(BallSystemState.INTAKING);
+                }
+
+                if  (intakeTogglePressed) {
+                    setState(BallSystemState.IDLE);
+                }
+                break;
+
+            case AUTO_SHOOTING:
+                intakePower = 0;
+                transferPower = 1.0;
+
+                if (shotsRemaining > 0 &&
+                        runtime.milliseconds() - lastShotTimeMs > 270) {
+
+                    spinClock();
+                    shotsRemaining--;
+                    lastShotTimeMs = runtime.milliseconds();
+                }
+
+                if (shotsRemaining <= 0) {
+                    setState(BallSystemState.POST_SHOOT_CLEANUP);
+                }
+                break;
+
+
+            case POST_SHOOT_CLEANUP:
+                intakePower = 0;
+                transferPower = 0;
+
+                Arrays.fill(savedBalls, 'n');
+                Arrays.fill(presentBalls, false);
+
+                setState(BallSystemState.IDLE);
+                break;
+        }
+    }
 
     //endregion
 }
