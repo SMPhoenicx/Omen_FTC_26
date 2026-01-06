@@ -73,7 +73,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @TeleOp(name="StateMachineOpMode", group = "A")
-@Disabled
+
 public class StateMachineOpMode extends LinearOpMode
 {
     private ElapsedTime runtime = new ElapsedTime();
@@ -1368,6 +1368,7 @@ public class StateMachineOpMode extends LinearOpMode
                 }
                 break;
 
+                //TODO consider running at power rather than this
             case AUTO_SHOOTING:
                 intakePower = 0;
                 transferPower = 1.0;

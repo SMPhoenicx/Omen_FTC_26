@@ -164,7 +164,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double outputDeadband = 0.03;
 
     // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {292.5, 352.5, 52.5, 112.5, 172.5, 232.5};
+    private final double[] SPINDEXER_POSITIONS = {52.5+24, 112.5+24, 172.5+24, 232.5+24, 292.5+24, 352.5+24};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
@@ -194,12 +194,13 @@ public class MainBlueOpMode extends LinearOpMode
     private final double tuDeadband = 0.02;
 
     // Turret Position
-    private double tuPos = 0;
+    private double tuPos = 0.0;
 
     private static final double turretZeroDeg = 7;
     private boolean hasTeleopLocalized = false;
 
-    private static final double TURRET_LIMIT_DEG = 130.0;
+    private static final double TURRET_LIMIT_DEG = 150.0;
+    private double tuOffset = 0.0;
     //endregion
 
     //region PEDROPATHING SYSTEM
@@ -232,7 +233,8 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     private boolean trackingOn = false;
-    private double localizeTime = 0;
+    boolean hasManuallyLocalized = false;
+    double localizeTime = 0;
 
     //region LOCALIZATION DEBUG
     private double lastLocalizeRange = 0;
@@ -254,6 +256,7 @@ public class MainBlueOpMode extends LinearOpMode
     private static final double TAG_X_PEDRO = 14.612;
     private static final double TAG_Y_PEDRO = 127.905;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
+    private static final Pose LOCALIZE_POSE = new Pose(7.5, 8.0, Math.toRadians(180));
     //endregion
 
     private int greenPos = 0;
@@ -383,20 +386,38 @@ public class MainBlueOpMode extends LinearOpMode
 
             //region TRACKING SETTINGS
             if (gamepad1.squareWasPressed()) {
-                tuPos = turretZeroDeg;
-                hasTeleopLocalized = false;
+                // Reset localization
+                hasManuallyLocalized = false;
                 localizeTime = runtime.milliseconds();
-                localizationSamples.clear();
+
+                tuPos = turretZeroDeg;
+                tuIntegral = 0.0;
+                tuLastError = 0.0;
+                lastTuTargetInit = false;
             }
 
             if (gamepad1.leftBumperWasPressed()) {
                 trackingOn = !trackingOn;
+
                 tuIntegral = 0.0;
                 tuLastError = 0.0;
-
                 lastTuTargetInit = false;
             }
+
+            if (!hasManuallyLocalized &&
+                    runtime.milliseconds() - localizeTime > 300) {
+
+                follower.setPose(LOCALIZE_POSE);
+                hasManuallyLocalized = true;
+
+                tuIntegral = 0.0;
+                tuLastError = 0.0;
+                lastTuTargetInit = false;
+                isInitialized = false;
+            }
+
             //endregion
+
 
             //good
             //region VISION PROCESSING
@@ -630,7 +651,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             if (autoShootNum <= 0) {
                 autoShot = false;
-                tranOn = false;
             }
 
             //spin to empty slot while intaking.
@@ -647,7 +667,6 @@ public class MainBlueOpMode extends LinearOpMode
                     prevSpindexerIndex = spindexerIndex;
                     spindexerIndex = currentSlot * 2;
                 }
-
             }
 
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
@@ -657,31 +676,15 @@ public class MainBlueOpMode extends LinearOpMode
             //take away hasTeleopLocalized and see if it works just using the position after auton. If not, then put that back in
             //region GOAL TRACKING
             if (trackingOn) {
-                if (!hasTeleopLocalized) {
+                if (!hasManuallyLocalized) {
                     tuPos = turretZeroDeg;
-                    if (Math.abs(gamepad1.right_stick_x) < 0.06
-                            && Math.abs(gamepad1.left_stick_y) < 0.06
-                            && Math.abs(gamepad1.left_stick_x) < 0.06) {
-                        if (runtime.milliseconds() - localizeTime > 300) {
-                            if (targetFound && desiredTag != null && desiredTag.metadata != null) {
-                                boolean ok = applyInitialAprilLocalization(desiredTag);
-                                if (ok) {
-                                    hasTeleopLocalized = true;
-
-                                    tuIntegral = 0.0;
-                                    tuLastError = 0.0;
-                                    lastTuTargetInit = false;
-                                    isInitialized = false;
-                                }
-                            }
-                        }
-                    }
                 }
                 else {
                     tuPos = calcTuTarget(
-                            robotPose.getX(), robotPose.getY(),
+                            robotPose.getX(),
+                            robotPose.getY(),
                             robotPose.getHeading()
-                    );
+                    ) + tuOffset;
                 }
             }
             //endregion
@@ -706,6 +709,13 @@ public class MainBlueOpMode extends LinearOpMode
 
             //aahhhfdhshafdosiuafhidsjf
             //region TURRET CONTROl
+            if (gamepad1.dpadLeftWasPressed()) {
+                tuOffset -= 5;
+            }
+            if (gamepad1.dpadRightWasPressed()) {
+                tuOffset += 5;
+            }
+
             if (!trackingOn) {
                 //zeros position
                 tuPos = normalizeDeg180(turretZeroDeg);
@@ -764,6 +774,7 @@ public class MainBlueOpMode extends LinearOpMode
                 telemetry.addData("Calc robot", "x=%.1f y=%.1f", lastLocalizeCalcX, lastLocalizeCalcY);
                 telemetry.addData("Final robot", "x=%.1f y=%.1f", lastLocalizeFinalX, lastLocalizeFinalY);
             }
+            telemetry.addData("last position", StateVars.lastPose);
             telemetry.update();
         }
     }
@@ -1145,126 +1156,7 @@ public class MainBlueOpMode extends LinearOpMode
     }
     //endregion
 
-    //region TURRET AND LOCALIZATION KMSKMSKMSKMKMS
-    private boolean applyInitialAprilLocalization(AprilTagDetection tag) {
-        if (tag == null) return false;
-
-        // Use Pedro pose for heading
-        Pose current = follower.getPose();
-        double robotHeading = current.getHeading();
-
-        double tagX = TAG_X_PEDRO;
-        double tagY = TAG_Y_PEDRO;
-        double range = tag.ftcPose.range;
-        double bearingDeg = tag.ftcPose.bearing;
-        double bearingRad = Math.toRadians(bearingDeg);
-
-// Angle from camera to tag in global field frame
-        double cameraToTagAngle = robotHeading + bearingRad;
-
-// Camera is 'range' away from tag in the OPPOSITE direction
-        double cameraX = tagX - range * Math.cos(cameraToTagAngle);
-        double cameraY = tagY - range * Math.sin(cameraToTagAngle);
-
-// Camera offset: 5.5" forward in robot frame
-        double cameraOffsetY = 5.5;
-        double cosH = Math.cos(robotHeading);
-        double sinH = Math.sin(robotHeading);
-
-        double fieldOffsetX = -cameraOffsetY * sinH;
-        double fieldOffsetY = cameraOffsetY * cosH;
-
-// Robot center
-        double robotX = cameraX - fieldOffsetX;
-        double robotY = cameraY - fieldOffsetY;
-
-        Pose candidatePose = new Pose(robotX, robotY, robotHeading);
-
-        // Add to samples list
-        localizationSamples.add(candidatePose);
-
-        // Need more samples?
-        if (localizationSamples.size() < LOCALIZATION_SAMPLE_COUNT) {
-            telemetry.addData("Localizing", "Sample %d/%d",
-                    localizationSamples.size(), LOCALIZATION_SAMPLE_COUNT);
-            return false; // keep collecting
-        }
-
-        // We have enough samples - filter outliers and average
-        Pose averagedPose = filterAndAveragePoses(localizationSamples);
-
-        if (averagedPose != null) {
-            follower.setPose(averagedPose);
-            telemetry.addData("Localized!", "x=%.1f y=%.1f h=%.1f",
-                    averagedPose.getX(), averagedPose.getY(),
-                    Math.toDegrees(averagedPose.getHeading()));
-
-            // Save debug values
-            lastLocalizeRange = range;
-            lastLocalizeBearingRaw = tag.ftcPose.bearing;
-            lastLocalizeBearingUsed = bearingDeg;
-            lastLocalizeRobotHeading = Math.toDegrees(robotHeading);
-            lastLocalizeCalcX = robotX;
-            lastLocalizeCalcY = robotY;
-            lastLocalizeFinalX = averagedPose.getX();
-            lastLocalizeFinalY = averagedPose.getY();
-            lastLocalizeTagX = tagX;
-            lastLocalizeTagY = tagY;
-            // Clear samples for next time
-            localizationSamples.clear();
-            return true;
-        } else {
-            telemetry.addData("Localization", "Failed - too much variance, restarting...");
-            localizationSamples.clear();
-            return false;
-        }
-    }
-
-    private Pose filterAndAveragePoses(List<Pose> samples) {
-        if (samples.isEmpty()) return null;
-
-        // Calculate median position to find center
-        List<Double> xVals = new ArrayList<>();
-        List<Double> yVals = new ArrayList<>();
-
-        for (Pose p : samples) {
-            xVals.add(p.getX());
-            yVals.add(p.getY());
-        }
-
-        Collections.sort(xVals);
-        Collections.sort(yVals);
-
-        double medianX = xVals.get(xVals.size() / 2);
-        double medianY = yVals.get(yVals.size() / 2);
-
-        // Filter out outliers (anything too far from median)
-        List<Pose> filteredSamples = new ArrayList<>();
-        for (Pose p : samples) {
-            double distFromMedian = Math.hypot(p.getX() - medianX, p.getY() - medianY);
-            if (distFromMedian <= MAX_SAMPLE_DEVIATION) {
-                filteredSamples.add(p);
-            } else {
-                telemetry.addData("Rejected Outlier", "dist=%.2f", distFromMedian);
-            }
-        }
-
-        // Need at least 3 good samples
-        if (filteredSamples.size() < 3) {
-            return null; // too much variance
-        }
-
-        // Average the filtered samples
-        double sumX = 0, sumY = 0, sumH = 0;
-        for (Pose p : filteredSamples) {
-            sumX += p.getX();
-            sumY += p.getY();
-            sumH += p.getHeading();
-        }
-
-        int n = filteredSamples.size();
-        return new Pose(sumX / n, sumY / n, sumH / n);
-    }
+    //region TURRET AND LOCALIZATION
 
     private double calcTuTarget(double robotX, double robotY, double robotHeadingRad) {
         double dx = goalX - robotX;
