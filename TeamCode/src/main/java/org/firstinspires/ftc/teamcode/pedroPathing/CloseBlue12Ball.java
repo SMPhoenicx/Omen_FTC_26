@@ -32,6 +32,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.teamcode.StateVars;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
@@ -420,6 +421,8 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         while(opModeIsActive()){
             follower.update();
+            //global save, see how it goes
+            StateVars.lastPose = follower.getPose();
             pidLastTimeMs = runtime.milliseconds();
 
             //region PATH STUFF
@@ -597,6 +600,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                     } else if (april == 23) {
                         greenPos = 2;
                     }
+                    //save globally
+                    StateVars.patternTagID = april;
                     motifOn=false;
                     subState++;
                 }
