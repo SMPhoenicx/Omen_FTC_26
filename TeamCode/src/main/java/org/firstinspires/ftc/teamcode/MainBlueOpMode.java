@@ -118,15 +118,6 @@ public class MainBlueOpMode extends LinearOpMode
     private AprilTagProcessor aprilTag;
     //endregion
 
-    //region FLYWHEEL SYSTEM
-    // PID Constants
-    double flyKp = 11.82;
-    double flyKi = 0.53;
-    double flyKd = 6.1;
-    double flyKiOffset = 0.0;
-    double flyKpOffset = 0.0;
-    //endregion
-
     //region HOOD SYSTEM
     // Hood PIDF Constants
     private double hoodKp = 0.0048;
@@ -197,7 +188,6 @@ public class MainBlueOpMode extends LinearOpMode
     private double tuPos = 0.0;
 
     private static final double turretZeroDeg = 7;
-    private boolean hasTeleopLocalized = false;
 
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
@@ -211,7 +201,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region SHOOTING VARS
     private static final double[] CAM_RANGE_SAMPLES =   {25, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5}; //prob not use
-    private static final double[] ODOM_RANGE_SAMPLES =  {31.6, 44.8, 50, 55.1, 60.4, 65.5, 71.1, 76.3, 81.2, 85.8, 90.3};
+    private static final double[] ODOM_RANGE_SAMPLES =  {45, 60.9, 66.5, 70.9, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3};
     private static final double[] FLY_SPEEDS =          {1023, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254};
     private static final double[] HOOD_ANGLES =         {89.6, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5};
 
@@ -236,29 +226,18 @@ public class MainBlueOpMode extends LinearOpMode
     boolean hasManuallyLocalized = false;
     double localizeTime = 0;
 
-    //region LOCALIZATION DEBUG
-    private double lastLocalizeRange = 0;
-    private double lastLocalizeBearingRaw = 0;
-    private double lastLocalizeBearingUsed = 0;
-    private double lastLocalizeRobotHeading = 0;
-    private double lastLocalizeCalcX = 0;
-    private double lastLocalizeCalcY = 0;
-    private double lastLocalizeFinalX = 0;
-    private double lastLocalizeFinalY = 0;
-    private double lastLocalizeTagX = 0;
-    private double lastLocalizeTagY = 0;
-    private double lastLocalizeGlobalToTag = 0;
-    //endregion
+    FlywheelPIDController flywheel;
+    double flyTargetTicksPerSec = 0.0;
+
 
     //region VARIANT VARS (diff for red and blue)
     private static final double goalX = 0;
     private static final double goalY = 144.0;
-    private static final double TAG_X_PEDRO = 14.612;
-    private static final double TAG_Y_PEDRO = 127.905;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
     private static final Pose LOCALIZE_POSE = new Pose(7.5, 8.0, Math.toRadians(180));
     //endregion
 
+    private double lastTriggered = 0;
     private int greenPos = 0;
 
     @Override
@@ -342,6 +321,11 @@ public class MainBlueOpMode extends LinearOpMode
         turret1.setDirection(CRServo.Direction.FORWARD);
         turret2.setDirection(CRServo.Direction.FORWARD);
         //endregion
+        flywheel = new FlywheelPIDController(
+              hardwareMap.get(DcMotorEx.class, "fly1"),
+             hardwareMap.get(DcMotorEx.class, "fly2")
+        );
+
 
         //region PRE-START
         follower = Constants.createFollower(hardwareMap);
@@ -359,6 +343,7 @@ public class MainBlueOpMode extends LinearOpMode
         } else if (patternTag == 23) {
             greenPos = 2;
         }
+
 
         telemetry.update();
         waitForStart();
@@ -384,7 +369,7 @@ public class MainBlueOpMode extends LinearOpMode
             Pose robotPose = follower.getPose();
             //endregion
 
-            //region TRACKING SETTINGS
+            //region TRACKING AND LOCALIZATION
             if (gamepad1.squareWasPressed()) {
                 // Reset localization
                 hasManuallyLocalized = false;
@@ -418,7 +403,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             //endregion
 
-
             //good
             //region VISION PROCESSING
             targetFound = false;
@@ -447,7 +431,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             //almostgood
             //region AUTO FLYSPEED/ANGLE
-            if (hasTeleopLocalized) {
                 //dist calc from goal to bot
                 double dx = goalX - robotPose.getX();
                 double dy = goalY - robotPose.getY();
@@ -461,15 +444,6 @@ public class MainBlueOpMode extends LinearOpMode
                     smoothedRange = smooth(odomRange, smoothedRange);
                 }
 
-                // increases ki at higher speeds...rework values
-                if (smoothedRange > 70) {
-                    flyKiOffset = 0.45;
-                } else if (smoothedRange < 40) {
-                    flyKiOffset = -0.2;
-                } else {
-                    flyKiOffset = 0.0;
-                }
-
                 // interpolate between measured values
                 if (!flyHoodLock) {
                     flySpeed = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, FLY_SPEEDS);
@@ -478,7 +452,7 @@ public class MainBlueOpMode extends LinearOpMode
                 }
 
                 telemetry.addData("Odom Range", "%.1f inches", smoothedRange);
-            }
+
             //endregion
 
             //almostgood, maybe remove present and only use color?
@@ -517,45 +491,43 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             // Flywheel Toggle
+            // Toggle flywheel
             if (gamepad2.crossWasPressed()) {
                 flyOn = !flyOn;
             }
 
-            // Voltage Compensation
-            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-            double baseF = 12.0 / 2450.0;
-            double compensatedF = baseF * (13.0 / voltage);
-
-            //set pid, might change this to custom pid to improve loop times, but that also means retuning pid cuz dt
-            fly1.setVelocityPIDFCoefficients(flyKp + flyKpOffset, flyKi + flyKiOffset, flyKd, compensatedF);
-            fly2.setVelocityPIDFCoefficients(flyKp + flyKpOffset, flyKi + flyKiOffset, flyKd, compensatedF);
-
-            // Set Flywheel Velocity
+// Decide target velocity (ticks/sec)
             if (flyOn) {
-                fly1.setVelocity(flySpeed + flyOffset);
-                fly2.setVelocity(flySpeed + flyOffset);
+                flyTargetTicksPerSec = flySpeed + flyOffset; // already in ticks/sec
             } else {
-                fly1.setVelocity(0);
-                fly2.setVelocity(0);
+                flyTargetTicksPerSec = 0.0;
             }
 
-            // check if flywheel is at speed
-            double flyTotal = flySpeed + flyOffset;
-            flyAtSpeed = (flyTotal - fly1.getVelocity() < 50) && (flyTotal - fly1.getVelocity() > -50) &&
-                    (flyTotal - fly2.getVelocity() < 50) && (flyTotal - fly2.getVelocity() > -50);
+// Read battery voltage ONCE per loop
+            double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
 
-            // ...and update led
+// Update custom flywheel controller
+            flywheel.updateFlywheelPID(
+                    flyTargetTicksPerSec,
+                    dtSec,
+                    voltage
+            );
+
+            // check if flywheel is at speed
+            // check if flywheel is at speed (using controller's filtered velocity)
+            flyAtSpeed = Math.abs(flyTargetTicksPerSec - flywheel.lastMeasuredVelocity) < 50;
+
+        // update LED & rumble
             if (!flyOn) {
                 led.setPosition(1); // white
             } else if (flyAtSpeed) {
                 if (prevflyState != flyAtSpeed) {
-                    //TODO TEST IF TS WORKS
                     gamepad1.rumble(300);
                     gamepad2.rumble(300);
                 }
                 led.setPosition(0.5); // blue
             } else {
-                led.setPosition(0.3); // red (ish)
+                led.setPosition(0.3); // red
             }
             prevflyState = flyAtSpeed;
             //endregion
@@ -757,24 +729,25 @@ public class MainBlueOpMode extends LinearOpMode
                 moveRobot(drive, strafe, turn);
             }
 
-            if (gamepad1.right_trigger > 0.5) {
-                flyHoodLock = !flyHoodLock;
+            if (gamepad1.right_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
+                flywheel.SPINUP_BOOST += 0.01;
+                lastTriggered = runtime.milliseconds();
+                //flyHoodLock = !flyHoodLock;
+            }
+            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
+                flywheel.SPINUP_BOOST -= 0.01;
+                lastTriggered = runtime.milliseconds();
+                //flyHoodLock = !flyHoodLock;
             }
             //endregion
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
-            if (hasTeleopLocalized) {
-                telemetry.addData("-------LAST LOCALIZATION------", "");
-                telemetry.addData("Range", "%.2f in", lastLocalizeRange);
-                telemetry.addData("Bearing raw", "%.2f°", lastLocalizeBearingRaw);
-                telemetry.addData("Bearing used", "%.2f°", lastLocalizeBearingUsed);
-                telemetry.addData("Robot heading", "%.2f°", lastLocalizeRobotHeading);
-                telemetry.addData("Global→Tag angle", "%.2f°", lastLocalizeGlobalToTag);
-                telemetry.addData("Tag pos", "x=%.1f y=%.1f", lastLocalizeTagX, lastLocalizeTagY);
-                telemetry.addData("Calc robot", "x=%.1f y=%.1f", lastLocalizeCalcX, lastLocalizeCalcY);
-                telemetry.addData("Final robot", "x=%.1f y=%.1f", lastLocalizeFinalX, lastLocalizeFinalY);
-            }
             telemetry.addData("last position", StateVars.lastPose);
+            telemetry.addData("FW cmdVel", "%.0f", flywheel.commandedVelocity);
+            telemetry.addData("FW measVel", "%.0f", flywheel.lastMeasuredVelocity);
+            telemetry.addData("FW power", "%.3f", fly1.getPower());
+            telemetry.addData("FW voltage", "%.2f", flywheel.voltageFiltered);
+            telemetry.addData("FW boost", "%.6f", flywheel.SPINUP_BOOST);
             telemetry.update();
         }
     }
@@ -1208,7 +1181,6 @@ public class MainBlueOpMode extends LinearOpMode
 
     }
 
-    //TODO IF TIME, check the voltage min max
     private double getTurretAngleDeg() {
         return normalizeDeg180(mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29));
     }
@@ -1238,7 +1210,5 @@ public class MainBlueOpMode extends LinearOpMode
         }
         return false;
     }
-
-
     //endregion
 }
