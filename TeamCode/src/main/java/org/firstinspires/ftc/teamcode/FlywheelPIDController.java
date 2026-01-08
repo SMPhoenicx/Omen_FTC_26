@@ -1,34 +1,32 @@
 package org.firstinspires.ftc.teamcode;
-
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 
-// FlywheelPIDController.java
 public class FlywheelPIDController {
     // Motors
     private final DcMotorEx fly1;
     private final DcMotorEx fly2;
 
+    // makes the initial spinup faster, boosts ff
     public double SPINUP_BOOST = 0.085;
 
-    // PID
+    // Variables to tune
     public double Kp = 0.0008;
     public double Ki = 0.0;
     public double Kd = 0.000055;
-    // Feedforward
-    public double Kv = 0.00042;  // initial guess (power per ticks/sec) — measure this
-    public double Ka = 1e-7;     // small accel FF (power per ticks/sec^2)
+    public double Kv = 0.00042;
+    public double Ka = 1e-7;
 
     // integral stuff
     private double integral = 0.0;
-    public double integralLimit = 0.25;    // clamp integral contribution (power)
-    public double integralActiveError = 1000.0; // only integrate if |error| < this
+    public double integralLimit = 0.25;
+    public double integralActiveError = 1000.0;
 
-    public double maxAccel = 500.0; // ticks/sec^2 (tune)
+    public double maxAccel = 500.0;
 
     // voltage compensation
-    public double voltageFiltered = 12.5;
-    public double voltageAlpha = 0.02; // EMA alpha for voltage (0.01 - 0.1)
+    public double voltageFiltered = 12.7;
+    public double voltageAlpha = 0.02; //voltage smoothing
     private long lastFUpdateMs = 0;
     public long fUpdateIntervalMs = 250;
 
@@ -39,9 +37,9 @@ public class FlywheelPIDController {
     public double dFilterAlpha = 0.2;
 
     // state stuff
-    public double commandedVelocity = 0.0; // ticks/sec (slewed target)
-    public double outputDeadband = 0.01; // power deadband
-    public double velocityTolerance = 50.0; // ticks/sec tolerance to consider "at speed"
+    public double commandedVelocity = 0.0;
+    public double outputDeadband = 0.01;
+    public double velocityTolerance = 50.0;
 
     public FlywheelPIDController(DcMotorEx fly1, DcMotorEx fly2) {
         this.fly1 = fly1;
@@ -54,13 +52,15 @@ public class FlywheelPIDController {
 
     public void updateFlywheelPID(double targetTicksPerSec, double dt, double batteryVoltage) {
         if (targetTicksPerSec <= 1e-6) {
-            // Reset controller state
+            // reset state
             integral = 0.0;
             lastError = 0.0;
-
-            // Do NOT apply negative power
+            //apply 0 power, not negative to reduce unnecessary motor strain
             fly1.setPower(0.0);
             fly2.setPower(0.0);
+
+            lastMeasuredVelocity =
+                    (fly1.getVelocity() + fly2.getVelocity()) * 0.5;
 
             return;
         }
@@ -92,38 +92,32 @@ public class FlywheelPIDController {
             lastFUpdateMs = System.currentTimeMillis();
         }
 
-        // --- 5) PID calculations (error in ticks/sec => pidOut in power units) ---
         double error = commandedVelocity - measured;
 
-        // derivative (filtered)
+        //derivative
         double dRaw = (error - lastError) / Math.max(dt, 1e-6);
         dFiltered = dFilterAlpha * dFiltered + (1.0 - dFilterAlpha) * dRaw;
 
-        // integral (conditional)
+        // integral
         if (Math.abs(error) < integralActiveError) {
             integral += error * dt;
-            // clamp integral *before* applying Ki so we limit its power contribution
             double integralPower = Ki * integral;
             if (integralPower > integralLimit) integral = integralLimit / Math.max(Ki, 1e-12);
             if (integralPower < -integralLimit) integral = -integralLimit / Math.max(Ki, 1e-12);
         } else {
-            // decay integral if far away to avoid long wind-up
             integral *= 0.9;
         }
 
         double pidOut = Kp * error + Ki * integral + Kd * dFiltered;
 
-        // --- 6) total power and clipping ---
         double power = ff + pidOut;
 
-        // clamp to allowable motor power -1..1
+        //clamp
         power = Math.max(-1.0, Math.min(1.0, power));
         if (Math.abs(power) < outputDeadband) power = 0.0;
 
-        // if within velocity tolerance, optionally zero output and damp integral to avoid bumping
         if (Math.abs(error) <= velocityTolerance) {
-            power = ff; // keep steady feedforward only; or set to 0.0 if you prefer
-            // slight integrator decay
+            power = ff;
             integral *= 0.5;
         }
 

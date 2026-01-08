@@ -38,7 +38,6 @@ import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
-import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -105,8 +104,6 @@ public class MainBlueOpMode extends LinearOpMode
     private NormalizedColorSensor color2 = null;
     private GoBildaPinpointDriver pinpoint = null;
 
-    // Vision Hardware
-    private Limelight3A limelight;
     //endregion
 
     //region VISION SYSTEM
@@ -155,7 +152,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double outputDeadband = 0.03;
 
     // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {52.5+24, 112.5+24, 172.5+24, 232.5+24, 292.5+24, 352.5+24};
+    private final double[] SPINDEXER_POSITIONS = {112.5, 172.5, 232.5, 292.5, 352.5, 52.5};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
@@ -196,14 +193,13 @@ public class MainBlueOpMode extends LinearOpMode
     //region PEDROPATHING SYSTEM
     private Follower follower;
     PathChain endgame = null;
-    Pose endgamePose = new Pose(103, 37.5, Math.toRadians(90));
     //endregion
 
     //region SHOOTING VARS
-    private static final double[] CAM_RANGE_SAMPLES =   {25, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5}; //prob not use
-    private static final double[] ODOM_RANGE_SAMPLES =  {45, 60.9, 66.5, 70.9, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3};
-    private static final double[] FLY_SPEEDS =          {1023, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254};
-    private static final double[] HOOD_ANGLES =         {89.6, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5};
+    private static final double[] CAM_RANGE_SAMPLES =   {25, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4}; //prob not use
+    private static final double[] ODOM_RANGE_SAMPLES =  {45, 60.9, 66.5, 70.9, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
+    private static final double[] FLY_SPEEDS =          {1023, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254, 1278, 1295, 1360, 1387, 1414};
+    private static final double[] HOOD_ANGLES =         {89.6, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5, -131.1, -142.9, -146.5, -148.5, -151.5};
 
     private double smoothedRange = 0;
     private boolean isInitialized = false;
@@ -232,9 +228,10 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region VARIANT VARS (diff for red and blue)
     private static final double goalX = 0;
-    private static final double goalY = 144.0;
+    private static final double goalY = 142.5;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
     private static final Pose LOCALIZE_POSE = new Pose(7.5, 8.0, Math.toRadians(180));
+    Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     //endregion
 
     private double lastTriggered = 0;
@@ -300,7 +297,7 @@ public class MainBlueOpMode extends LinearOpMode
         // Hubs
         List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
         for (LynxModule hub : allHubs) {
-            hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
         }
 
         // Set Modes
@@ -353,10 +350,6 @@ public class MainBlueOpMode extends LinearOpMode
         while (opModeIsActive()) {
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
-            for (LynxModule hub : allHubs) {
-                hub.clearBulkCache();
-            }
-
             double nowMs = runtime.milliseconds();
             double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
             pidLastTimeMs = nowMs;
@@ -448,11 +441,10 @@ public class MainBlueOpMode extends LinearOpMode
                 if (!flyHoodLock) {
                     flySpeed = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, FLY_SPEEDS);
                     hoodAngle = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, HOOD_ANGLES);
-                    hoodAngle = Math.max(hoodAngle, -189); //clamp to prevent it going too high
+                    hoodAngle = Math.max(hoodAngle, -130); //clamp to prevent it going too high
                 }
 
                 telemetry.addData("Odom Range", "%.1f inches", smoothedRange);
-
             //endregion
 
             //almostgood, maybe remove present and only use color?
@@ -490,23 +482,17 @@ public class MainBlueOpMode extends LinearOpMode
                 hoodOffset = 0;
             }
 
-            // Flywheel Toggle
-            // Toggle flywheel
-            if (gamepad2.crossWasPressed()) {
+            if (gamepad1.crossWasPressed()) {
                 flyOn = !flyOn;
             }
 
-// Decide target velocity (ticks/sec)
             if (flyOn) {
-                flyTargetTicksPerSec = flySpeed + flyOffset; // already in ticks/sec
+                flyTargetTicksPerSec = flySpeed + flyOffset;
             } else {
                 flyTargetTicksPerSec = 0.0;
             }
 
-// Read battery voltage ONCE per loop
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-
-// Update custom flywheel controller
             flywheel.updateFlywheelPID(
                     flyTargetTicksPerSec,
                     dtSec,
@@ -514,16 +500,14 @@ public class MainBlueOpMode extends LinearOpMode
             );
 
             // check if flywheel is at speed
-            // check if flywheel is at speed (using controller's filtered velocity)
             flyAtSpeed = Math.abs(flyTargetTicksPerSec - flywheel.lastMeasuredVelocity) < 50;
 
-        // update LED & rumble
+            // update LED & rumble
             if (!flyOn) {
                 led.setPosition(1); // white
             } else if (flyAtSpeed) {
                 if (prevflyState != flyAtSpeed) {
                     gamepad1.rumble(300);
-                    gamepad2.rumble(300);
                 }
                 led.setPosition(0.5); // blue
             } else {
@@ -535,10 +519,10 @@ public class MainBlueOpMode extends LinearOpMode
             //good
             //region HOOD CONTROL
             // Hood Position Selection
-            if (gamepad1.dpadUpWasPressed()) {
+            if (gamepad2.dpadUpWasPressed()) {
                 hoodOffset -= 5;
             }
-            if (gamepad1.dpadDownWasPressed()) {
+            if (gamepad2.dpadDownWasPressed()) {
                 hoodOffset += 5;
             }
             // Update Hood PID
@@ -564,41 +548,45 @@ public class MainBlueOpMode extends LinearOpMode
             //region SPINDEXER AND TRANSFER CONTROL
             // Spindexer Navigation
             //Left and Right go to intake positions, aka the odd numbered indices on the pos array
-            if (gamepad2.dpadLeftWasPressed()) {
+            if (gamepad1.dpadLeftWasPressed()) {
                 spinCounterClock();
             }
-            if (gamepad2.dpadRightWasPressed()) {
+            if (gamepad1.dpadRightWasPressed()) {
                 spinClock();
             }
             //intake positions are the even ones
-            if (gamepad2.dpadUpWasPressed()) {
+            if (gamepad1.dpadUpWasPressed()) {
                 autoShot = true;
                 autoShootNum = 3;
                 tranOn = true;
-//                int greenIn=-1;
-//                for(int i=0;i<3;i++){
-//                    if(savedBalls[i]=='g'){
-//                        greenIn=i;
-//                    }
-//                }
-//                if(greenIn==-1){
-//                    for(int i=0;i<3;i++){
-//                        if(savedBalls[i]=='n'){
-//                            greenIn=i;
-//                        }
-//                    }
-//                }
-//                if(greenIn==-1) greenIn=0;
-//
-//                int diff = (greenIn + greenPos) % 3;
-//                if(diff==0) spindexerIndex=4;
-//                else if(diff==1) spindexerIndex=0;
-//                else spindexerIndex=2;
+            }
+            //TODO check if works
+            if (gamepad1.dpadDownWasPressed()) {
+                tranOn = false;
+                int greenIn=-1;
+                for(int i=0;i<3;i++){
+                    if(savedBalls[i]=='g'){
+                        greenIn=i;
+                    }
+                }
+                if(greenIn==-1){
+                    for(int i=0;i<3;i++){
+                        if(savedBalls[i]=='n'){
+                            greenIn=i;
+                        }
+                    }
+                }
+                if(greenIn==-1) greenIn=0;
+
+                int diff = (greenIn + greenPos) % 3;
+                if(diff==0) spindexerIndex=4;
+                else if(diff==1) spindexerIndex=0;
+                else spindexerIndex=2;
             }
 
             //good
             //region TRANSFER CONTROL
-            if (gamepad2.triangleWasPressed()) {
+            if (gamepad1.triangleWasPressed()) {
                 tranOn = !tranOn;
             }
             if (tranOn && flyOn) {
@@ -663,28 +651,24 @@ public class MainBlueOpMode extends LinearOpMode
 
             //fix lol
             //region ENDGAME NAVIGATION
-            if (gamepad1.dpadLeftWasPressed() && gamepad1.circleWasPressed() && !follower.isBusy() && localizeApril) {
+            if (gamepad2.dpadLeftWasPressed() && gamepad2.circleWasPressed() && !follower.isBusy()) {
                 endgame = follower.pathBuilder()
                         .addPath(new BezierLine(follower.getPose(), endgamePose))
                         .setLinearHeadingInterpolation(follower.getHeading(), endgamePose.getHeading())
                         .build();
                 follower.followPath(endgame, true);
             }
-            if (gamepad1.circleWasPressed() && !follower.isBusy() && !localizeApril) {
+            if (gamepad2.circleWasPressed()) {
                 follower.breakFollowing();
-                localizeApril = true;
-            }
-            if (endgame != null && !follower.isBusy()) {
-                localizeApril = false;
             }
             //endregion
 
             //aahhhfdhshafdosiuafhidsjf
             //region TURRET CONTROl
-            if (gamepad1.dpadLeftWasPressed()) {
+            if (gamepad2.dpadLeftWasPressed()) {
                 tuOffset -= 5;
             }
-            if (gamepad1.dpadRightWasPressed()) {
+            if (gamepad2.dpadRightWasPressed()) {
                 tuOffset += 5;
             }
 
@@ -729,16 +713,16 @@ public class MainBlueOpMode extends LinearOpMode
                 moveRobot(drive, strafe, turn);
             }
 
-            if (gamepad1.right_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
-                flywheel.SPINUP_BOOST += 0.01;
-                lastTriggered = runtime.milliseconds();
-                //flyHoodLock = !flyHoodLock;
+            if (gamepad1.right_trigger > 0.5) { // && runtime.milliseconds() - lastTriggered > 150) {
+                //flywheel.SPINUP_BOOST += 0.01;
+                //lastTriggered = runtime.milliseconds();
+                flyHoodLock = !flyHoodLock;
             }
-            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
-                flywheel.SPINUP_BOOST -= 0.01;
-                lastTriggered = runtime.milliseconds();
-                //flyHoodLock = !flyHoodLock;
-            }
+//            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
+//                flywheel.SPINUP_BOOST -= 0.01;
+//                lastTriggered = runtime.milliseconds();
+//                //flyHoodLock = !flyHoodLock;
+//            }
             //endregion
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
@@ -990,7 +974,7 @@ public class MainBlueOpMode extends LinearOpMode
                 return yValues[i] + t * (yValues[i + 1] - yValues[i]);
             }
         }
-        return yValues[yValues.length - 1]; // fallback
+        return yValues[yValues.length - 1];
     }
 
     private double smooth(double newValue, double previousValue) {
