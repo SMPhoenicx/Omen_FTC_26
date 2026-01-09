@@ -137,7 +137,7 @@ public class MainBlueOpMode extends LinearOpMode
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
     private double pidKp = 0.0067;
-    private double pidKi = 0.0006;
+    private double pidKi = 0.00065;
     private double pidKd = 0.00030;
     private double pidKf = 0.000;
 
@@ -152,7 +152,7 @@ public class MainBlueOpMode extends LinearOpMode
     private final double outputDeadband = 0.03;
 
     // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {112.5, 172.5, 232.5, 292.5, 352.5, 52.5};
+    private final double[] SPINDEXER_POSITIONS = {112.5-13, 172.5-13, 232.5-13, 292.5-13, 352.5-13, 52.50-13};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
@@ -196,10 +196,10 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     //region SHOOTING VARS
-    private static final double[] CAM_RANGE_SAMPLES =   {25, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4}; //prob not use
-    private static final double[] ODOM_RANGE_SAMPLES =  {45, 60.9, 66.5, 70.9, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1023, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254, 1278, 1295, 1360, 1387, 1414};
-    private static final double[] HOOD_ANGLES =         {89.6, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5, -131.1, -142.9, -146.5, -148.5, -151.5};
+    private static final double[] CAM_RANGE_SAMPLES =   {25, 37, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4}; //prob not use
+    private static final double[] ODOM_RANGE_SAMPLES =  {45, 55.3, 60.9, 66.5, 70.9, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
+    private static final double[] FLY_SPEEDS =          {1023, 1064, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254, 1278, 1295, 1360, 1387, 1414};
+    private static final double[] HOOD_ANGLES =         {89.6, 29.8, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5, -131.1, -142.9, -146.5, -148.5, -151.5};
 
     private double smoothedRange = 0;
     private boolean isInitialized = false;
@@ -219,7 +219,7 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     private boolean trackingOn = false;
-    boolean hasManuallyLocalized = false;
+    boolean hasManuallyLocalized = true;
     double localizeTime = 0;
 
     FlywheelPIDController flywheel;
@@ -228,14 +228,23 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region VARIANT VARS (diff for red and blue)
     private static final double goalX = 0;
-    private static final double goalY = 142.5;
+    private static final double goalY = 140;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(7.5, 8.0, Math.toRadians(180));
+    private static final Pose LOCALIZE_POSE = new Pose(9, 8.5, Math.toRadians(180));
     Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     //endregion
 
     private double lastTriggered = 0;
     private int greenPos = 0;
+
+    // Vision-based turret correction
+    double visionCorrectionDeg = 0.0;
+
+    // Tuning constants (start conservative)
+    static final double VISION_CORRECTION_GAIN = 0.1; // 10% per loop
+    static final double MAX_VISION_CORRECTION_DEG = 10.0;
+    static final double VISION_MIN_RANGE = 20.0;
+    static final double VISION_MAX_RANGE = 120.0;
 
     @Override
     public void runOpMode() {
@@ -372,6 +381,7 @@ public class MainBlueOpMode extends LinearOpMode
                 tuIntegral = 0.0;
                 tuLastError = 0.0;
                 lastTuTargetInit = false;
+                visionCorrectionDeg = 0.0;
             }
 
             if (gamepad1.leftBumperWasPressed()) {
@@ -380,6 +390,7 @@ public class MainBlueOpMode extends LinearOpMode
                 tuIntegral = 0.0;
                 tuLastError = 0.0;
                 lastTuTargetInit = false;
+                visionCorrectionDeg = 0.0;
             }
 
             if (!hasManuallyLocalized &&
@@ -392,6 +403,7 @@ public class MainBlueOpMode extends LinearOpMode
                 tuLastError = 0.0;
                 lastTuTargetInit = false;
                 isInitialized = false;
+                visionCorrectionDeg = 0.0;
             }
 
             //endregion
@@ -421,6 +433,25 @@ public class MainBlueOpMode extends LinearOpMode
                 telemetry.addData("Tag Range", "%.1f inches", tagRange);
             }
             //endregion
+
+            //region VISION-BASED TURRET CORRECTION
+            if (trackingOn && targetFound && desiredTag != null) {
+                double range = desiredTag.ftcPose.range;
+
+                if (range > VISION_MIN_RANGE && range < VISION_MAX_RANGE) {
+
+                    double visionErrorDeg = -desiredTag.ftcPose.bearing;
+
+                    visionCorrectionDeg += VISION_CORRECTION_GAIN * visionErrorDeg;
+
+                    visionCorrectionDeg = Math.max(
+                            -MAX_VISION_CORRECTION_DEG,
+                            Math.min(MAX_VISION_CORRECTION_DEG, visionCorrectionDeg)
+                    );
+                }
+            }
+            //endregion
+
 
             //almostgood
             //region AUTO FLYSPEED/ANGLE
@@ -644,7 +675,10 @@ public class MainBlueOpMode extends LinearOpMode
                             robotPose.getX(),
                             robotPose.getY(),
                             robotPose.getHeading()
-                    ) + tuOffset;
+                    )
+                            + tuOffset
+                            + visionCorrectionDeg;
+
                 }
             }
             //endregion
@@ -732,6 +766,9 @@ public class MainBlueOpMode extends LinearOpMode
             telemetry.addData("FW power", "%.3f", fly1.getPower());
             telemetry.addData("FW voltage", "%.2f", flywheel.voltageFiltered);
             telemetry.addData("FW boost", "%.6f", flywheel.SPINUP_BOOST);
+            telemetry.addData("Vision Corr (deg)", "%.2f", visionCorrectionDeg);
+            telemetry.addData("Tag Bearing", targetFound ? desiredTag.ftcPose.bearing : 0);
+
             telemetry.update();
         }
     }

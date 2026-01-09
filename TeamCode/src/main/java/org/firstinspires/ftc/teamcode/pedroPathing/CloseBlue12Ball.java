@@ -26,6 +26,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
+import org.firstinspires.ftc.robotcore.external.State;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
@@ -33,6 +34,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.teamcode.StateVars;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
@@ -327,7 +329,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         int shootingState = 0;
         boolean running = true;
         int flySpeed = 1105;
-        int shoot0change = -30;
+        int shoot0change = -35;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -420,6 +422,7 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         while(opModeIsActive()){
             follower.update();
+            StateVars.lastPose = follower.getPose();
 
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
@@ -611,6 +614,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         greenPos = 2;
                     }
                     motifOn=false;
+                    StateVars.patternTagID = april;
                     subState++;
                 }
                 else if(!follower.isBusy()){
