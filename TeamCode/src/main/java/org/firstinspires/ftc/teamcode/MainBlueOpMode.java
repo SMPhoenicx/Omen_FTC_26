@@ -66,7 +66,6 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -100,10 +99,9 @@ public class MainBlueOpMode extends LinearOpMode
     private AnalogInput spinEncoder;
     private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
-    private NormalizedColorSensor color = null;
+    private NormalizedColorSensor color1 = null;
     private NormalizedColorSensor color2 = null;
     private GoBildaPinpointDriver pinpoint = null;
-
     //endregion
 
     //region VISION SYSTEM
@@ -198,7 +196,7 @@ public class MainBlueOpMode extends LinearOpMode
     //region SHOOTING VARS
     private static final double[] CAM_RANGE_SAMPLES =   {25, 37, 39.2, 44.2, 48.8, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4}; //prob not use
     private static final double[] ODOM_RANGE_SAMPLES =  {45, 55.3, 60.9, 66.5, 70.9, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1023, 1064, 1092, 1134, 1154, 1162, 1165, 1229, 1255, 1263, 1267, 1254, 1278, 1295, 1360, 1387, 1414};
+    private static final double[] FLY_SPEEDS =          {1020, 1061, 1088, 1131, 1151, 1158, 1162, 1229, 1255, 1263, 1267, 1254, 1278, 1295, 1363, 1387, 1414};
     private static final double[] HOOD_ANGLES =         {89.6, 29.8, 3.5, -40.9, -68.1, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5, -131.1, -142.9, -146.5, -148.5, -151.5};
 
     private double smoothedRange = 0;
@@ -212,12 +210,6 @@ public class MainBlueOpMode extends LinearOpMode
     private boolean autoShot = false;
     //endregion
 
-    //region LOCALIZATION AVERAGING
-    private static final int LOCALIZATION_SAMPLE_COUNT = 7;
-    private List<Pose> localizationSamples = new ArrayList<>();
-    private static final double MAX_SAMPLE_DEVIATION = 3.0; // inches - reject outliers
-    //endregion
-
     private boolean trackingOn = false;
     boolean hasManuallyLocalized = true;
     double localizeTime = 0;
@@ -228,10 +220,12 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region VARIANT VARS (diff for red and blue)
     private static final double goalX = 0;
-    private static final double goalY = 140;
+    private static final double goalY = 142;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(9, 8.5, Math.toRadians(180));
+    private static final Pose LOCALIZE_POSE = new Pose(135, 8.9, Math.toRadians(180));
     Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
+    static final double TAG_X = 14.4;
+    static final double TAG_Y = 129.0;
     //endregion
 
     private double lastTriggered = 0;
@@ -242,6 +236,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Tuning constants (start conservative)
     static final double VISION_CORRECTION_GAIN = 0.1; // 10% per loop
+    static final double VISION_P_GAIN = 0.3;
     static final double MAX_VISION_CORRECTION_DEG = 10.0;
     static final double VISION_MIN_RANGE = 20.0;
     static final double VISION_MAX_RANGE = 120.0;
@@ -300,7 +295,7 @@ public class MainBlueOpMode extends LinearOpMode
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
 
         // Initialize Sensors
-        color = hardwareMap.get(NormalizedColorSensor.class, "Color 1");
+        color1 = hardwareMap.get(NormalizedColorSensor.class, "Color 1");
         color2 = hardwareMap.get(NormalizedColorSensor.class, "Color 2");
 
         // Hubs
@@ -435,21 +430,79 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region VISION-BASED TURRET CORRECTION
+            //region VISION-BASED TURRET CORRECTION (goal-aware)
             if (trackingOn && targetFound && desiredTag != null) {
+
                 double range = desiredTag.ftcPose.range;
 
+                // Gate by range to ensure measurements are credible
                 if (range > VISION_MIN_RANGE && range < VISION_MAX_RANGE) {
 
-                    double visionErrorDeg = -desiredTag.ftcPose.bearing;
+                    // 1) Compute angles in world frame from robot odometry:
+                    //    angleToTag  = global bearing from robot to april tag
+                    //    angleToGoal = global bearing from robot to the real aim point
+                    double rx = robotPose.getX();
+                    double ry = robotPose.getY();
 
-                    visionCorrectionDeg += VISION_CORRECTION_GAIN * visionErrorDeg;
+                    // If you have goalX/goalY defined globally, use them; otherwise use AIM_GOAL_*
+                    double gx = goalX; // or AIM_GOAL_X
+                    double gy = goalY; // or AIM_GOAL_Y
 
-                    visionCorrectionDeg = Math.max(
-                            -MAX_VISION_CORRECTION_DEG,
-                            Math.min(MAX_VISION_CORRECTION_DEG, visionCorrectionDeg)
+                    double angleToTagRad  = Math.atan2(TAG_Y - ry, TAG_X - rx);
+                    double angleToGoalRad = Math.atan2(gy    - ry, gx    - rx);
+
+                    double angleToTagDeg  = Math.toDegrees(angleToTagRad);
+                    double angleToGoalDeg = Math.toDegrees(angleToGoalRad);
+
+                    // Normalize difference to [-180, 180]
+                    double angleDiffDeg = normalizeDeg180(angleToGoalDeg - angleToTagDeg);
+                    // angleDiffDeg is how much to rotate from the tag direction to point at the goal
+
+                    // 2) Use the camera's measured bearing to the tag (relative to turret forward)
+                    //    desiredTag.ftcPose.bearing is the observed "tag bearing" in degrees.
+                    double measuredTagBearingDeg = -desiredTag.ftcPose.bearing;
+
+                    // 3) Compute the corrected bearing to the *aim point*, in turret frame:
+                    //    correctedBearing = (measured bearing to tag) + (angle from tag->goal)
+                    double correctedBearingToAimDeg = measuredTagBearingDeg + angleDiffDeg;
+
+                    // 4) Optional scaling by lateral offset from diagonal line (x + y = 144)
+                    //    This amplifies correction if robot is far from the diagonal. Use cautiously.
+                    //    Signed distance from the line y = 144 - x is: s = (x + y) - 144
+                    //    If you do not want scaling, set lateralScale = 1.0.
+                    double signedDist = (rx + ry) - 144.0; // >0 means y > 144 - x (your "right" side)
+                    double maxDistForScale = 120.0; // max expected magnitude (tune)
+                    double kScale = 0.6; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
+                    double lateralScale = 1.0 + kScale * (Math.max(-maxDistForScale, Math.min(maxDistForScale, signedDist)) / maxDistForScale);
+                    // Clamp so scale stays reasonable:
+                    lateralScale = Math.max(0.5, Math.min(2.0, lateralScale));
+
+                    // If you prefer not to use the lateral scaling, replace 'lateralScale' with 1.0 above.
+                    double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
+
+                    // 5) Update visionCorrectionDeg slowly and clamp
+                    // Proportional assist (fast response)
+                    double pAssist = Math.max(
+                            -2.5,
+                            Math.min(2.5, VISION_P_GAIN * scaledCorrectedBearingDeg)
                     );
+
+                    // Integral correction (drift removal)
+                    visionCorrectionDeg += VISION_CORRECTION_GAIN * scaledCorrectedBearingDeg;
+
+                    // Apply proportional assist immediately
+                    visionCorrectionDeg += pAssist;
+
+
+                    // Hard clamp to avoid overcorrection
+                    visionCorrectionDeg = Math.max(-MAX_VISION_CORRECTION_DEG, Math.min(MAX_VISION_CORRECTION_DEG, visionCorrectionDeg));
                 }
+            } else {
+                // Slow decay when tag not visible so stale corrections fade
+                visionCorrectionDeg *= 0.995;
             }
+            //endregion
+
             //endregion
 
 
@@ -480,7 +533,7 @@ public class MainBlueOpMode extends LinearOpMode
 
             //almostgood, maybe remove present and only use color?
             //region COLOR SENSOR AND BALL TRACKING
-            char detectedColor = getDetectedColor();
+            char detectedColor = getRealColor();
             boolean present = isBallPresent();
 
             //start detection when spindexer has reached rest position
@@ -938,41 +991,35 @@ public class MainBlueOpMode extends LinearOpMode
         }
     }
 
-    public char getDetectedColor() {
-        NormalizedRGBA c1 = color.getNormalizedColors();
-        NormalizedRGBA c2 = color2.getNormalizedColors();
+    private char getRealColor(){
+        char c1 = getDetectedColor(color1);
+        char c2 = getDetectedColor(color2);
 
-        char r1 = classifyOne(c1);
-        char r2 = classifyOne(c2);
-
-        // If either sees purple, return purple
-        if (r1 == 'p' || r2 == 'p') return 'p';
-
-        // Else if either sees green, return green
-        if (r1 == 'g' || r2 == 'g') return 'g';
-
-        return 'n';
-    }
-
-    private char classifyOne(NormalizedRGBA c) {
-        if (c.alpha < 0.1) return 'n';
-
-        float nRed = c.red / c.alpha;
-        float nGreen = c.green / c.alpha;
-        float nBlue = c.blue / c.alpha;
-
-        // Your logic
-        if (nBlue > nGreen && nGreen > nRed) { // blue > green > red
+        if(c1=='p'||c2=='p'){
             return 'p';
         }
-        if (nGreen > nBlue && nBlue > nRed && nGreen > nRed * 2) { // green > blue > red and strong green
+        if(c1=='g'||c2=='g'){
+            return 'g';
+        }
+        return 'n';
+    }
+    private char getDetectedColor(NormalizedColorSensor sensor){
+        NormalizedRGBA colors = sensor.getNormalizedColors();
+        float nRed = colors.red/colors.alpha;
+        float nGreen = colors.green/colors.alpha;
+        float nBlue = colors.blue/colors.alpha;
+
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
+        }
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
             return 'g';
         }
         return 'n';
     }
 
     private boolean isBallPresent() {
-        NormalizedRGBA colors1 = color.getNormalizedColors();
+        NormalizedRGBA colors1 = color1.getNormalizedColors();
         NormalizedRGBA colors2 = color2.getNormalizedColors();
 
         return colors1.alpha > 0.15 || colors2.alpha > 0.15;

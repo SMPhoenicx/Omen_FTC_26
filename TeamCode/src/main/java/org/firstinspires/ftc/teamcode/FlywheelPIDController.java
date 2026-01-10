@@ -8,12 +8,12 @@ public class FlywheelPIDController {
     private final DcMotorEx fly2;
 
     // makes the initial spinup faster, boosts ff
-    public double SPINUP_BOOST = 0.085;
+    public double SPINUP_BOOST = 0.07;
 
     // Variables to tune
     public double Kp = 0.0008;
     public double Ki = 0.0;
-    public double Kd = 0.000055;
+    public double Kd = 0.000062;
     public double Kv = 0.00042;
     public double Ka = 1e-7;
 
@@ -82,7 +82,7 @@ public class FlywheelPIDController {
         double ff = Kv * commandedVelocity + Ka * commandedAccel;
 
         if (commandedVelocity > 0 &&
-                lastMeasuredVelocity < 0.85 * commandedVelocity) {
+                lastMeasuredVelocity < 0.8 * commandedVelocity) {
             ff += SPINUP_BOOST;
         }
 
