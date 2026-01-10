@@ -9,6 +9,7 @@ import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -22,6 +23,7 @@ import com.qualcomm.robotcore.util.Range;
 
 import java.util.List;
 
+@Disabled
 @Autonomous(name="Close Red Auto", group="Robot")
 public class CloseRedAuto extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();

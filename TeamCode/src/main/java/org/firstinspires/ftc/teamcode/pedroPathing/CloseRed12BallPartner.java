@@ -15,7 +15,6 @@ import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -45,8 +44,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@Autonomous(name="Close Red 12 Ball Auto", group="Robot")
-public class CloseRed12Ball extends LinearOpMode {
+@Autonomous(name="Partner Close Red 12 Ball Auto", group="Robot")
+public class CloseRed12BallPartner extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
 
@@ -55,9 +54,9 @@ public class CloseRed12Ball extends LinearOpMode {
     private Pose startPose, shoot1, movePoint;
     private Pose[] pickup1 = new Pose[2];
     private Pose[] pickup2 = new Pose[2];
-    private Pose[] pickup3 = new Pose[3];
+    private Pose[] pickupGate = new Pose[2];
     private Pose[] gatePose = new Pose[2];
-    private PathChain scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath,gatePath, pickupPath1, pickupPath2, pickupPath3;
+    private PathChain scorePath0, scorePath1, scorePath2, scorePathGate, moveScore,limelightPath,gatePath, pickupPath1, pickupPath2, pickupPathGate;
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -247,12 +246,11 @@ public class CloseRed12Ball extends LinearOpMode {
         gatePose[0] = new Pose(144-28,74.5,Math.toRadians(90));
         gatePose[1] = new Pose(144-12.5,74.5,Math.toRadians(90));//45.5 3
 
-        pickup2[0] = new Pose(144-60,42,Math.toRadians(0));
-        pickup2[1] = new Pose(144-7,54,Math.toRadians(0));
+        pickup2[0] = new Pose(144-65,42,Math.toRadians(0));
+        pickup2[1] = new Pose(144-11,54,Math.toRadians(0));
 
-        pickup3[0] = new Pose(144-70.5,15.5,Math.toRadians(0));
-        pickup3[1] = new Pose(144-7,33
-                ,Math.toRadians(0));
+        pickupGate[0] = new Pose(107,54,Math.toRadians(0));
+        pickupGate[1] = new Pose(127.1129,56.7644,0.5684);
 //        pickup3[0] = new Pose(36,59,Math.toRadians(180));
 //        pickup3[0] = new Pose(44,35,Math.toRadians(180));
 //        pickup3[1] = new Pose(13,35,Math.toRadians(180));
@@ -280,28 +278,29 @@ public class CloseRed12Ball extends LinearOpMode {
         pickupPath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[1].getHeading())
-                .addParametricCallback(0.3,()->{
+                .addParametricCallback(0.35,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
                 })
                 .setTimeoutConstraint(500)
                 .build();
-        pickupPath3 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup3[0],pickup3[1]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[1].getHeading())
-                .addParametricCallback(0.45,()->{
-                    follower.setMaxPower(0.3);
+        pickupPathGate = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickupGate[0],pickupGate[1]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickupGate[1].getHeading())
+                .addParametricCallback(0.99,()->{
+                    follower.setMaxPower(0.5);
                     intakeOn = true;
+//                    timeout = runtime.milliseconds() + 3000;
                 })
-                .setTimeoutConstraint(500)
+                .setTimeoutConstraint(3500)
                 .build();
         gatePath = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup1[1],gatePose[0],gatePose[1]))
                 .setLinearHeadingInterpolation(pickup1[1].getHeading(),gatePose[1].getHeading())
                 .build();
         scorePath1 = follower.pathBuilder()
-                .addPath(new BezierCurve(gatePose[1],shoot1))
-                .setLinearHeadingInterpolation(gatePose[1].getHeading(),shoot1.getHeading())
+                .addPath(new BezierCurve(pickup1[1],shoot1))
+                .setLinearHeadingInterpolation(pickup1[1].getHeading(),shoot1.getHeading())
                 .addParametricCallback(0.99,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
@@ -309,10 +308,10 @@ public class CloseRed12Ball extends LinearOpMode {
                 .setLinearHeadingInterpolation(pickup2[1].getHeading(),shoot1.getHeading())
                 .addParametricCallback(0.97,()-> shootReady=true)
                 .build();
-        scorePath3 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup3[1],shoot1))
-                .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.99,()-> shootReady=true)
+        scorePathGate = follower.pathBuilder()
+                .addPath(new BezierCurve(pickupGate[1],shoot1))
+                .setLinearHeadingInterpolation(pickupGate[1].getHeading(),shoot1.getHeading())
+                .addParametricCallback(0.98,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,movePoint))
@@ -467,7 +466,7 @@ public class CloseRed12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -90;
+                            tuPos = -83;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -477,43 +476,8 @@ public class CloseRed12Ball extends LinearOpMode {
                         break;
                     //endregion
 
-                    //region CYCLE ONE
+                    //region CYCLE ONE (PICKUP 2)
                     case 1:
-                        if(subState==0){
-                            follower.followPath(pickupPath1,false);
-//                            flyKp += 5;
-//                            flyKi += 2.5;
-//                            flyKd -= 4;
-//                            flyKi -= 5;
-//                            flyKp -= 4;
-                            flySpeed += shoot0change;
-
-                            subState++;
-                        }
-                        //INTAKE is subState 1
-                        else if(subState==2){
-                            follower.setMaxPower(1);
-                            follower.followPath(gatePath,false);
-                            tuPos = -90;
-                            gateCutoff = true;
-
-                            timeout = runtime.milliseconds()+1400;
-                            subState++;
-                        }
-                        else if(subState==3){
-                            gateCutoff = false;
-                            follower.followPath(scorePath1,true);
-                            autoShootOn = true;
-                            shootingState=0;
-
-                            subState++;
-                        }
-                        //AUTO SHOOTING is subState 4, resets subState, and increments pathState
-                        break;
-                    //endregion
-
-                    //region CYCLE TWO
-                    case 2:
                         if(subState==0){
                             follower.followPath(pickupPath2,false);
 
@@ -523,6 +487,7 @@ public class CloseRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
+                            tuPos = -87;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -532,18 +497,18 @@ public class CloseRed12Ball extends LinearOpMode {
                         break;
                     //endregion
 
-                    //region CYCLE THREE
-                    case 3:
+                    //region CYCLE TWO (LOOPS GATE PICKUP)
+                    case 2:
                         if(subState==0){
-                            follower.followPath(pickupPath3,false);
+                            follower.followPath(pickupPathGate,false);
 
                             subState++;
                         }
                         //INTAKE is subState 1
                         else if(subState==2){
                             follower.setMaxPower(1);
-                            follower.followPath(scorePath3,true);
-                            tuPos = -80;
+                            follower.followPath(scorePathGate,true);
+                            tuPos = -92;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -552,6 +517,27 @@ public class CloseRed12Ball extends LinearOpMode {
                         //AUTO SHOOTING is subState 3, resets subState, and increments pathState
                         break;
                     //endregion
+
+                    //region CYCLE THREE (PICKUP 1)
+                    case 3:
+                        if(subState==0){
+                            follower.followPath(pickupPath1,false);
+
+                            subState++;
+                        }
+                        //INTAKE is subState 1
+                        else if(subState==2){
+                            follower.setMaxPower(1);
+                            follower.followPath(scorePath1,true);
+//                            tuPos = -80;
+                            autoShootOn = true;
+                            shootingState=0;
+
+                            subState++;
+                        }
+                        //AUTO SHOOTING is subState 3, resets subState, and increments pathState
+                        break;
+                    //endregion (P
 
                     case 4:
 //                        transOn=false;
@@ -636,7 +622,7 @@ public class CloseRed12Ball extends LinearOpMode {
             //endregion
 
             //region INTAKE
-            if(intakeOn&&runtime.milliseconds()>timeout){
+            if(intakeOn){
                 intake.setPower(1);
                 transOn=false;
                 if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'&&spindexerAtTarget){//detect one ball intake
@@ -733,7 +719,10 @@ public class CloseRed12Ball extends LinearOpMode {
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
-                    pathState++;
+
+                    if(pathState!=2||runtime.milliseconds()>20000){
+                        pathState++;
+                    }
                 }
             }
             //endregion
