@@ -11,7 +11,7 @@ import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @TeleOp(name="Get Real Bot Pose for Auto", group="Robot")
 public class TestGetPose extends LinearOpMode {
-    private Pose startPose = new Pose(18,119,Math.toRadians(55));
+    private Pose startPose = new Pose(144-18,119,Math.toRadians(180-55));
 
     //region IDK
     private ElapsedTime runtime = new ElapsedTime();

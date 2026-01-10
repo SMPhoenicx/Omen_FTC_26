@@ -44,8 +44,8 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@Autonomous(name="Partner Close Blue 12 Ball Auto", group="Robot")
-public class CloseBlue12BallPartner extends LinearOpMode {
+@Autonomous(name="Partner Close Red 12 Ball Auto", group="Robot")
+public class CloseRed12BallPartner extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
 
@@ -239,24 +239,24 @@ public class CloseBlue12BallPartner extends LinearOpMode {
     //endregion
 
     public void createPoses(){
-        startPose = new Pose(18,119,Math.toRadians(55));
+        startPose = new Pose(144-18,119,Math.toRadians(180-55));
 
-        pickup1[0] = new Pose(47.5,75,Math.toRadians(180));
-        pickup1[1] = new Pose(15,78.5,Math.toRadians(180));
-        gatePose[0] = new Pose(28,74.5,Math.toRadians(90));
-        gatePose[1] = new Pose(12.5,74.5,Math.toRadians(90));//45.5 3
+        pickup1[0] = new Pose(144-47.5,75,Math.toRadians(0));
+        pickup1[1] = new Pose(144-15,78.5,Math.toRadians(0));
+        gatePose[0] = new Pose(144-28,74.5,Math.toRadians(90));
+        gatePose[1] = new Pose(144-12.5,74.5,Math.toRadians(90));//45.5 3
 
-        pickup2[0] = new Pose(65,42,Math.toRadians(180));
-        pickup2[1] = new Pose(11,54,Math.toRadians(180));
+        pickup2[0] = new Pose(144-65,42,Math.toRadians(0));
+        pickup2[1] = new Pose(144-11,54,Math.toRadians(0));
 
-        pickupGate[0] = new Pose(144-107,54,Math.toRadians(180));
-        pickupGate[1] = new Pose(144-127.1129,56.7644,3.14159 - 0.5684);
+        pickupGate[0] = new Pose(107,54,Math.toRadians(0));
+        pickupGate[1] = new Pose(127.1129,56.7644,0.5684);
 //        pickup3[0] = new Pose(36,59,Math.toRadians(180));
 //        pickup3[0] = new Pose(44,35,Math.toRadians(180));
 //        pickup3[1] = new Pose(13,35,Math.toRadians(180));
 
-        shoot1 = new Pose(49,88,Math.toRadians(180));
-        movePoint = new Pose(31,70,Math.toRadians(90));
+        shoot1 = new Pose(144-49,88,Math.toRadians(0));
+        movePoint = new Pose(144-31,70,Math.toRadians(90));
     }
 
     public void createPaths(){
@@ -746,7 +746,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             //endregion
 
             //region TURRET
-            updateTurretPID(tuPos, dtSec);
+            updateTurretPID(-tuPos + 7, dtSec);
             //endregion
 
             //region TRANSFER

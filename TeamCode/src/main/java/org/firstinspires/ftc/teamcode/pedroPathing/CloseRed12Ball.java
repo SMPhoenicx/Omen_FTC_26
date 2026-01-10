@@ -15,6 +15,7 @@ import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
@@ -32,6 +33,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.Exposur
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.StateVars;
@@ -240,16 +242,17 @@ public class CloseRed12Ball extends LinearOpMode {
     public void createPoses(){
         startPose = new Pose(144-18,119,Math.toRadians(180-55));
 
-        pickup1[0] = new Pose(144-49,77,Math.toRadians(0));
-        pickup1[1] = new Pose(144-21,78.5,Math.toRadians(0));
-        gatePose[0] = new Pose(144-28,73.5,Math.toRadians(90));
-        gatePose[1] = new Pose(144-15,73.5,Math.toRadians(90));//45.5 3
+        pickup1[0] = new Pose(144-47.5,75,Math.toRadians(0));
+        pickup1[1] = new Pose(144-15,78.5,Math.toRadians(0));
+        gatePose[0] = new Pose(144-28,74.5,Math.toRadians(90));
+        gatePose[1] = new Pose(144-12.5,74.5,Math.toRadians(90));//45.5 3
 
-        pickup2[0] = new Pose(144-69.5,46,Math.toRadians(0));
-        pickup2[1] = new Pose(144-12,55,Math.toRadians(0));
+        pickup2[0] = new Pose(144-60,42,Math.toRadians(0));
+        pickup2[1] = new Pose(144-7,54,Math.toRadians(0));
 
-        pickup3[0] = new Pose(144-71,15,Math.toRadians(0));
-        pickup3[1] = new Pose(144-13,32,Math.toRadians(0));
+        pickup3[0] = new Pose(144-70.5,15.5,Math.toRadians(0));
+        pickup3[1] = new Pose(144-7,33
+                ,Math.toRadians(0));
 //        pickup3[0] = new Pose(36,59,Math.toRadians(180));
 //        pickup3[0] = new Pose(44,35,Math.toRadians(180));
 //        pickup3[1] = new Pose(13,35,Math.toRadians(180));
@@ -277,7 +280,7 @@ public class CloseRed12Ball extends LinearOpMode {
         pickupPath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[1].getHeading())
-                .addParametricCallback(0.35,()->{
+                .addParametricCallback(0.3,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
                 })
@@ -286,7 +289,7 @@ public class CloseRed12Ball extends LinearOpMode {
         pickupPath3 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup3[0],pickup3[1]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[1].getHeading())
-                .addParametricCallback(0.6,()->{
+                .addParametricCallback(0.45,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
                 })
@@ -309,7 +312,7 @@ public class CloseRed12Ball extends LinearOpMode {
         scorePath3 = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup3[1],shoot1))
                 .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.98,()-> shootReady=true)
+                .addParametricCallback(0.99,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,movePoint))
@@ -400,10 +403,18 @@ public class CloseRed12Ball extends LinearOpMode {
         //endregion
 
         //region INITIALIZE PEDRO
+        createPoses();
+
         pinpoint.resetPosAndIMU();
+        pinpoint.setPosition(new Pose2D(
+                DistanceUnit.INCH,
+                startPose.getX(),
+                startPose.getY(),
+                AngleUnit.RADIANS,
+                startPose.getHeading()
+        ));
 //        pinpoint.recalibrateIMU();
 
-        createPoses();
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
         createPaths();
@@ -456,7 +467,7 @@ public class CloseRed12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -80;
+                            tuPos = -90;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -483,7 +494,7 @@ public class CloseRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(gatePath,false);
-                            tuPos = -85;
+                            tuPos = -90;
                             gateCutoff = true;
 
                             timeout = runtime.milliseconds()+1400;
@@ -532,7 +543,7 @@ public class CloseRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
-                            tuPos = -70;
+                            tuPos = -80;
                             autoShootOn = true;
                             shootingState=0;
 
