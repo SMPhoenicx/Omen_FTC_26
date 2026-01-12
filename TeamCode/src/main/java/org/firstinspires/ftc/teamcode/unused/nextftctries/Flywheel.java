@@ -1,9 +1,6 @@
-package org.firstinspires.ftc.teamcode.nextftctries;
-
-import com.qualcomm.robotcore.hardware.DcMotor;
+package org.firstinspires.ftc.teamcode.unused.nextftctries;
 
 import dev.nextftc.control.ControlSystem;
-import dev.nextftc.core.commands.Command;
 import dev.nextftc.core.subsystems.Subsystem;
 import dev.nextftc.hardware.impl.MotorEx;
 

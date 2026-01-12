@@ -173,6 +173,9 @@ public class CloseRed12Ball extends LinearOpMode {
     private double integralLimit = 500.0;
     private double pidLastTimeMs = 0.0;
 
+    private double dFiltered = 0.0;
+    private double dAlpha = 0.85;   // 0.80–0.90 works; higher = smoother
+
     // Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
@@ -419,6 +422,7 @@ public class CloseRed12Ball extends LinearOpMode {
         follower.setStartingPose(startPose);
         createPaths();
 
+        StateVars.lastPose = startPose;
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
@@ -890,7 +894,9 @@ public class CloseRed12Ball extends LinearOpMode {
         integral = clamp(integral, -integralLimit, integralLimit);
 
         // derivative
-        double d = (error - lastError) / Math.max(dt, 1e-6);
+        double dRaw = (error - lastError) / Math.max(dt, 1e-6);
+        dFiltered = dAlpha * dFiltered + (1.0 - dAlpha) * dRaw;
+        double d = dFiltered;
 
         // PIDF output (interpreted as servo power)
         double out = pidKp * error + pidKi * integral + pidKd * d;

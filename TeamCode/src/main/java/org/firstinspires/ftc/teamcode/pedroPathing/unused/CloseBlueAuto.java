@@ -1,22 +1,15 @@
-package org.firstinspires.ftc.teamcode.pedroPathing;
+package org.firstinspires.ftc.teamcode.pedroPathing.unused;
 
 import android.util.Size;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.FuturePose;
 import com.pedropathing.geometry.Pose;
-import com.pedropathing.paths.HeadingInterpolator;
 import com.pedropathing.paths.PathChain;
-import com.pedropathing.ftc.PoseConverter;
-import com.pedropathing.ftc.InvertedFTCCoordinates;
-import com.pedropathing.paths.PathConstraints;
-import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
-import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -24,24 +17,20 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.robotcore.external.State;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
-import org.firstinspires.ftc.teamcode.FlywheelPIDController;
-import org.firstinspires.ftc.teamcode.StateVars;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
@@ -50,19 +39,22 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@Autonomous(name="Far Blue 12 Ball Auto", group="Robot")
-public class FarBlue12Ball extends LinearOpMode {
+@Disabled
+@Autonomous(name="Close Blue Auto", group="Robot")
+public class CloseBlueAuto extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
 
     //region PEDRO VARS
     private Follower follower;
-    private Pose startPose, shoot1, movePoint;
-    private Pose[] pickup1 = new Pose[2];
-    private Pose[] pickup2 = new Pose[2];
+    private Pose startPose, obelisk, shoot1, movePoint;
+    private Pose[] pickup1 = new Pose[3];
+    private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
-    private Pose[] gatePose = new Pose[2];
-    private PathChain scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath,gatePath, pickupPath1, pickupPath2, pickupPath3;
+    private PathChain obeliskPath, scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath;
+    private PathChain[] pickupPath1 = new PathChain[3];
+    private PathChain[] pickupPath2 = new PathChain[3];
+    private PathChain[] pickupPath3 = new PathChain[3];
     //endregion
 
     //region HARDWARE DECLARATIONS
@@ -81,11 +73,8 @@ public class FarBlue12Ball extends LinearOpMode {
     private CRServo hood = null;
     private CRServo turret1 = null;
     private CRServo turret2 = null;
-    //TODO temp servo for tuning flywheel pid
-//    private Servo tempServo = null;
 
     // ENCODERS
-    private GoBildaPinpointDriver pinpoint = null;
     private AnalogInput spinEncoder;
     private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
@@ -133,8 +122,10 @@ public class FarBlue12Ball extends LinearOpMode {
 
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
-    private FlywheelPIDController flywheel;
-    private boolean shootReady = false;
+    double flyKp = 9.0;
+    double flyKi = 0.6;
+    double flyKd = 3.6;
+    double flyKiOffset = 0.0;
     //endregion
 
     //region HOOD SYSTEM
@@ -157,16 +148,16 @@ public class FarBlue12Ball extends LinearOpMode {
     private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -139;
+    private double hoodAngle = -48.1;
     private double hoodOffset = 0;
     //endregion
 
     //region SPINDEXER SYSTEM
     // PIDF Constants
-    private double pidKp = 0.0052;
-    private double pidKi = 0.0;
-    private double pidKd = 0.0009;
-    private double pidKf = 0.007;
+    private double pidKp = 0.009;
+    private double pidKi = 0.0000043;
+    private double pidKd = 0.00000014;
+    private double pidKf = 0.001;
 
     // PID State
     private double integral = 0.0;
@@ -174,23 +165,18 @@ public class FarBlue12Ball extends LinearOpMode {
     private double integralLimit = 500.0;
     private double pidLastTimeMs = 0.0;
 
-
-    private double dFiltered = 0.0;
-    private double dAlpha = 0.86;
-
     // Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
 
     // Position Presets (6 slots)
-    private final double[] SPINDEXER_POSITIONS = {332, 32, 92, 152, 212, 272};
+    private final double[] SPINDEXER_POSITIONS = {340.0, 40.0, 100.0, 160.0, 220.0, 280.0};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
     // Ball Storage Tracking ('n','p','g')
     private char[] savedBalls = {'g', 'p', 'p'};
     int greenPos=0;
-    boolean intakeOn = false;
 
     // Auto-intake State Machine
     private enum SpindexerState {
@@ -221,10 +207,10 @@ public class FarBlue12Ball extends LinearOpMode {
 
     //region TURRET SYSTEM
     // PIDF Constants
-    private double tuKp = 0.0050;
-    private double tuKi = 0.0006;
-    private double tuKd = 0.00014;
-    private double tuKf = 0.02;
+    private double tuKp = 0.0055;
+    private double tuKi = 0.000;
+    private double tuKd = 0.000048;
+    private double tuKf = 0.0;
 
 
     // PID State
@@ -235,103 +221,98 @@ public class FarBlue12Ball extends LinearOpMode {
     // Control Parameters
     private final double tuToleranceDeg = 2.0;
     private final double tuDeadband = 0.03;
-    private boolean turretAtTarget = false;
 
     // Turret Position
     private double tuPos = 0;
+
+    // Simple low-pass on the camera error to kill jitter
+    private double filteredHeadingError = 0.0;
     //endregion
 
-    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 1.8, 1.6);
-
     public void createPoses(){
-        startPose = new Pose(56.8,8,Math.toRadians(180));
+        startPose = new Pose(144-121,121,Math.toRadians(180-125));
+        obelisk = new Pose(144-100,100,Math.toRadians(180));
 
-        //0 is control point, 1 is endpoint
-        pickup1[0] = new Pose(60.86,40.52,Math.toRadians(180));
-        pickup1[1] = new Pose(10,35.68,Math.toRadians(180));
+        pickup1[0] = new Pose(144-94,83,Math.toRadians(180));
+        pickup1[1] = new Pose(144-118,83,Math.toRadians(180));
+        pickup1[2] = new Pose(144-100,83,Math.toRadians(180));
 
-        pickup2[0] = new Pose(64.0,68.6,Math.toRadians(180));
-        pickup2[1] = new Pose(10,60.55,Math.toRadians(180));
+        pickup2[0] = new Pose(144-94,61,Math.toRadians(180));
+        pickup2[1] = new Pose(144-127,61,Math.toRadians(180));
+        pickup2[2] = new Pose(144-100,61,Math.toRadians(180));
 
-        pickup3[0] = new Pose(58.25,7.76,Math.toRadians(180));
-        pickup3[1] = new Pose(10.4,8.53,Math.toRadians(180));
+        pickup3[0] = new Pose(144-94,36,Math.toRadians(180));
+        pickup3[1] = new Pose(144-126,36,Math.toRadians(180));
+        pickup3[2] = new Pose(144-100,36,Math.toRadians(180));
 
-        shoot1 = new Pose(58,19,Math.toRadians(180));
-        movePoint = new Pose(35.5,18.5,Math.toRadians(90));
+        shoot1 = new Pose(144-90,90,Math.toRadians(180));
+        movePoint = new Pose(144-90,50,Math.toRadians(180));
     }
 
     public void createPaths(){
+//        limelightPath = follower.pathBuilder()
+//                .addPath(new BezierCurve(this::limelightPose, follower::getPose))
+//                .build();
+        obeliskPath = follower.pathBuilder()
+                .addPath(new BezierCurve(startPose,obelisk))
+                .setLinearHeadingInterpolation(startPose.getHeading(),obelisk.getHeading())
+                .build();
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierLine(startPose,shoot1))
-                .setConstraints(shootConstraints)
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.87,()-> {
-                    shootReady=true;
-                    timeout = 400;
-                })
+                .addPath(new BezierCurve(obelisk,shoot1))
+                .setLinearHeadingInterpolation(obelisk.getHeading(),shoot1.getHeading())
                 .build();
-        pickupPath1 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup1[0],pickup1[1]))
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.2,()->{
-                    follower.setMaxPower(0.33);
-                    intakeOn = true;
-                    pidKp -= 0.0015;
-                })
-                .setTimeoutConstraint(500)
+        pickupPath1[0] = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickup1[0]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup1[0].getHeading())
                 .build();
-        pickupPath2 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.35,()->{
-                    follower.setMaxPower(0.36);
-                    intakeOn = true;
-                    pidKp -= 0.0015;
-                })
-                .setTimeoutConstraint(500)
+        pickupPath1[1] = follower.pathBuilder()
+                .addPath(new BezierLine(pickup1[0],pickup1[1]))
+                .setLinearHeadingInterpolation(pickup1[0].getHeading(),pickup1[1].getHeading())
                 .build();
-        pickupPath3 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup3[0],pickup3[1]))
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.33,()->{
-                    follower.setMaxPower(0.26);
-                    intakeOn = true;
-                    pidKp -= 0.0015;
-                })
-                .setTimeoutConstraint(500)
+        pickupPath1[2] = follower.pathBuilder()
+                .addPath(new BezierCurve(pickup1[1],pickup1[2]))
+                .setLinearHeadingInterpolation(pickup1[1].getHeading(),pickup1[2].getHeading())
+//                .addParametricCallback(0.75, ()-> createLimelightPathOn=true)
+                .build();
+        pickupPath2[0] = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickup2[0]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[0].getHeading())
+                .build();
+        pickupPath2[1] = follower.pathBuilder()
+                .addPath(new BezierLine(pickup2[0],pickup2[1]))
+                .setLinearHeadingInterpolation(pickup2[0].getHeading(),pickup2[1].getHeading())
+                .build();
+        pickupPath2[2] = follower.pathBuilder()
+                .addPath(new BezierCurve(pickup2[1],pickup2[2]))
+                .setLinearHeadingInterpolation(pickup2[1].getHeading(),pickup2[2].getHeading())
+                .build();
+        pickupPath3[0] = follower.pathBuilder()
+                .addPath(new BezierCurve(shoot1,pickup3[0]))
+                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[0].getHeading())
+                .build();
+        pickupPath3[1] = follower.pathBuilder()
+                .addPath(new BezierLine(pickup3[0],pickup3[1]))
+                .setLinearHeadingInterpolation(pickup3[0].getHeading(),pickup3[1].getHeading())
+                .build();
+        pickupPath3[2] = follower.pathBuilder()
+                .addPath(new BezierCurve(pickup3[1],pickup3[2]))
+                .setLinearHeadingInterpolation(pickup3[1].getHeading(),pickup3[2].getHeading())
                 .build();
         scorePath1 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup1[1],shoot1))
-                .setConstraints(shootConstraints)
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.5,()-> {
-                    follower.setMaxPower(0.7);
-                })
-                .addParametricCallback(0.983,()-> shootReady=true)
+                .addPath(new BezierCurve(pickup1[2],shoot1))
+                .setLinearHeadingInterpolation(pickup1[2].getHeading(),shoot1.getHeading())
                 .build();
         scorePath2 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup2[1],shoot1))
-                .setConstraints(shootConstraints)
-                .setTranslationalConstraint(1.5)
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.5,()-> {
-                    follower.setMaxPower(0.7);
-                })
-                .addParametricCallback(0.99,()-> shootReady=true)
+                .addPath(new BezierCurve(pickup2[2],shoot1))
+                .setLinearHeadingInterpolation(pickup2[2].getHeading(),shoot1.getHeading())
                 .build();
         scorePath3 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup3[1],shoot1))
-                .setConstraints(shootConstraints)
-                .setTranslationalConstraint(1.5)
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.4,()-> {
-                    follower.setMaxPower(0.5);
-                })
-                .addParametricCallback(0.99,()-> shootReady=true)
+                .addPath(new BezierCurve(pickup3[2],shoot1))
+                .setLinearHeadingInterpolation(pickup3[2].getHeading(),shoot1.getHeading())
                 .build();
         moveScore = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,movePoint))
-                .setLinearHeadingInterpolation(shoot1.getHeading(), movePoint.getHeading())
+                .addPath(new BezierCurve(shoot1,movePoint))
+                .setConstantHeadingInterpolation(movePoint.getHeading())
                 .build();
     }
 
@@ -345,10 +326,9 @@ public class FarBlue12Ball extends LinearOpMode {
         boolean targetFound = false;
 
         int shootingState = 0;
+        int flySpeed = 0;
         boolean running = true;
-        int flySpeed = 1380;
-        int shoot0change = -57;
-        double spindexerSavedPos = 0;
+        int flySpeedTarget = 1208;
 
         //Ball tracking
         double ballTx=0;
@@ -358,8 +338,8 @@ public class FarBlue12Ball extends LinearOpMode {
         boolean motifOn = false;
         boolean transOn = false;
         boolean autoShootOn = false;
+        boolean intakeOn = false;
         boolean intakeLimelightOn = false;
-        boolean gateCutoff = false;
         //endregion
 
         //region HARDWARE INFO
@@ -375,10 +355,8 @@ public class FarBlue12Ball extends LinearOpMode {
         hood = hardwareMap.get(CRServo.class,"hood");
         turret1 = hardwareMap.get(CRServo.class, "tu1");
         turret2 = hardwareMap.get(CRServo.class, "tu2");
-//        tempServo = hardwareMap.get(Servo.class,"speedometer");
 
         //ENCODERS
-        pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
         hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
@@ -387,6 +365,10 @@ public class FarBlue12Ball extends LinearOpMode {
         color1 = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
         color2 = hardwareMap.get(NormalizedColorSensor.class,"Color 2");
 
+        //MODES
+        fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
         //DIRECTIONS
         fly1.setDirection(DcMotor.Direction.FORWARD);
         fly2.setDirection(DcMotor.Direction.REVERSE);
@@ -394,25 +376,14 @@ public class FarBlue12Ball extends LinearOpMode {
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
-
-        // Hubs
-        List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
-        for (LynxModule hub : allHubs) {
-            hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
-        }
-        flywheel = new FlywheelPIDController(
-                hardwareMap.get(DcMotorEx.class, "fly1"),
-                hardwareMap.get(DcMotorEx.class, "fly2")
-        );
-        flywheel.teleopMultiplier = 1.0;
         //endregion
 
         //region CAMERA INIT
         //LIMELIGHT
-//        limelight = hardwareMap.get(Limelight3A.class, "limelight");
-//        limelight.setPollRateHz(100);
-//        limelight.start();
-//        limelight.pipelineSwitch(1);
+        limelight = hardwareMap.get(Limelight3A.class, "limelight");
+        limelight.setPollRateHz(100);
+        limelight.start();
+        limelight.pipelineSwitch(1);
 
         initAprilTag();
         setManualExposure(4, 200);
@@ -420,25 +391,14 @@ public class FarBlue12Ball extends LinearOpMode {
 
         //region INITIALIZE PEDRO
         createPoses();
-
-        Pose2D ftcStartPose = PoseConverter.poseToPose2D(
-                startPose,
-                InvertedFTCCoordinates.INSTANCE
-        );
-
-        pinpoint.resetPosAndIMU();
-        pinpoint.setPosition(ftcStartPose);
-
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
         createPaths();
 
-        StateVars.lastPose = startPose;
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
-        tuPos = -130;
-        flySpeed -= shoot0change;
+        tuPos = -20;
 
         //WAIT
         waitForStart();
@@ -447,44 +407,25 @@ public class FarBlue12Ball extends LinearOpMode {
 
         while(opModeIsActive()){
             follower.update();
-            StateVars.lastPose = follower.getPose();
+            pidLastTimeMs = runtime.milliseconds();
 
-            //region IMPORTANT VARS
-            //needed at beginning of loop, don't change location
-            for (LynxModule hub : allHubs) {
-                hub.clearBulkCache();
-            }
-
-            double nowMs = runtime.milliseconds();
-            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
-            pidLastTimeMs = nowMs;
-
-            if (dtSec <= 0.0) dtSec = 1.0 / 50.0;
-
-            double turnInput = -gamepad1.right_stick_x;
-
-            follower.update();
-            Pose robotPose = follower.getPose();
-            //endregion
-
-            if (runtime.milliseconds() > 27000) {
-                pathState = 4;
-            }
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
                 switch(pathState){
                     //region CYCLE ZERO (READ MOTIF)
                     case 0:
                         if(subState==0){
-                            follower.followPath(scorePath0,true);
+                            follower.followPath(obeliskPath,false);
+                            flySpeed = flySpeedTarget;
                             motifOn = true;
 
-                            timeout = runtime.milliseconds()+650;
+                            timeout = runtime.milliseconds()+3000;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -122;
+                            follower.followPath(scorePath0,true);
+                            tuPos = 110;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -497,77 +438,180 @@ public class FarBlue12Ball extends LinearOpMode {
                     //region CYCLE ONE
                     case 1:
                         if(subState==0){
-                            follower.followPath(pickupPath1,false);
+                            follower.followPath(pickupPath1[0],false);
+                            flySpeed = 0;
+                            transOn=false;
+                            intake.setPower(1);
 
-                            flySpeed += shoot0change;
                             subState++;
                         }
-                        //INTAKE is subState 1
-                        else if(subState==2){
-                            follower.setMaxPower(1);
+                        else if(subState==1){
+                            follower.followPath(pickupPath1[1],0.3,false);
+                            intakeOn = true;
+
+                            subState++;
+                        }
+                        //INTAKE is subState 2
+                        else if(subState==3){
+                            follower.followPath(pickupPath1[2],true);
+
+                            subState++;
+                        }
+                        else if(subState==4){
+                            if(getRealColor()!='n'){
+                                savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
+                            }
+                            if(!spindexerFull()){
+                                createLimelightPathOn = true;
+                                timeout = runtime.milliseconds()+1000;
+                            }
+
+                            subState++;
+                        }
+                        else if(subState==5){
+                            createLimelightPathOn = false;
+                            if(limelightPath!=null&&!spindexerFull()) {
+                                follower.followPath(limelightPath,false);
+                                intakeLimelightOn = true;
+
+                                subState++;
+                            }
+                            else{
+                                subState+=2;
+                            }
+                        }
+                        //INTAKE LIMELIGHT is subState 6
+                        else if(subState==7){
                             follower.followPath(scorePath1,true);
-                            tuPos = -124;
+                            limelightPath=null;
+                            flySpeed = flySpeedTarget;
                             autoShootOn = true;
                             shootingState=0;
 
                             subState++;
                         }
-                        //AUTO SHOOTING is subState 4, resets subState, and increments pathState
+                        //AUTO SHOOTING is subState 8, resets subState, and increments pathState
                         break;
                     //endregion
 
                     //region CYCLE TWO
                     case 2:
                         if(subState==0){
-                            follower.followPath(pickupPath2,false);
+                            limelightWallPos = pickup2[1].getX();
+                            follower.followPath(pickupPath2[0],false);
+                            flySpeed = 0;
+                            transOn=false;
+                            intake.setPower(1);
 
                             subState++;
                         }
-                        //INTAKE is subState 1
-                        else if(subState==2){
-                            follower.setMaxPower(1);
+                        else if(subState==1){
+                            follower.followPath(pickupPath2[1],0.3,false);
+                            intakeOn = true;
+
+                            subState++;
+                        }
+                        //INTAKE is subState 2
+                        else if(subState==3){
+                            follower.followPath(pickupPath2[2],true);
+
+                            subState++;
+                        }
+                        else if(subState==4){
+                            if(!spindexerFull()){
+                                createLimelightPathOn = true;
+                                timeout = runtime.milliseconds()+1000;
+                            }
+
+                            subState++;
+                        }
+                        else if(subState==5){
+                            createLimelightPathOn = false;
+                            if(limelightPath!=null&&!spindexerFull()) {
+                                follower.followPath(limelightPath,false);
+                                intakeLimelightOn = true;
+
+                                subState++;
+                            }
+                            else{
+                                subState+=2;
+                            }
+                        }
+                        //INTAKE LIMELIGHT is subState 6
+                        else if(subState==7){
                             follower.followPath(scorePath2,true);
-                            tuPos += 0.5;
+                            limelightPath=null;
+                            flySpeed = flySpeedTarget;
                             autoShootOn = true;
                             shootingState=0;
 
                             subState++;
                         }
-                        //AUTO SHOOTING is subState 3, resets subState, and increments pathState
+                        //AUTO SHOOTING is subState 8, resets subState, and increments pathState
                         break;
                     //endregion
 
                     //region CYCLE THREE
                     case 3:
                         if(subState==0){
-                            follower.followPath(pickupPath3,false);
+                            follower.followPath(pickupPath3[0],false);
+                            flySpeed = 0;
+                            transOn=false;
+                            intake.setPower(1);
 
                             subState++;
                         }
-                        //INTAKE is subState 1
-                        else if(subState==2){
-                            timeout = runtime.milliseconds() + 500;
-                            follower.setMaxPower(1);
+                        else if(subState==1){
+                            follower.followPath(pickupPath3[1],0.3,false);
+                            intakeOn = true;
+
+                            subState++;
+                        }
+                        //INTAKE is subState 2
+                        else if(subState==3){
+                            follower.followPath(pickupPath3[2],true);
+
+                            subState++;
+                        }
+                        else if(subState==4){
+                            if(!spindexerFull()){
+                                createLimelightPathOn = true;
+                                timeout = runtime.milliseconds()+1000;
+                            }
+
+                            subState++;
+                        }
+                        else if(subState==5){
+                            createLimelightPathOn = false;
+                            if(limelightPath!=null&&!spindexerFull()) {
+                                follower.followPath(limelightPath,false);
+                                intakeLimelightOn = true;
+
+                                subState++;
+                            }
+                            else{
+                                subState+=2;
+                            }
+                        }
+                        //INTAKE LIMELIGHT is subState 6
+                        else if(subState==7){
                             follower.followPath(scorePath3,true);
+                            limelightPath=null;
+                            flySpeed = flySpeedTarget;
                             autoShootOn = true;
                             shootingState=0;
 
                             subState++;
                         }
-                        //AUTO SHOOTING is subState 3, resets subState, and increments pathState
+                        //AUTO SHOOTING is subState 8, resets subState, and increments pathState
                         break;
                     //endregion
 
                     case 4:
-//                        transOn=false;
-                        //TODO Check if this works
-                        PathChain tempPath = follower.pathBuilder()
-                                .addPath(new BezierLine(follower.getPose(),movePoint))
-                                .setLinearHeadingInterpolation(follower.getPose().getHeading(), movePoint.getHeading())
-                                .build();
-                        follower.followPath(tempPath);
+                        transOn=false;
+                        follower.followPath(moveScore);
                         pathState++;
-//                        flySpeed=0;
+                        flySpeed=0;
                         running=false;
                         break;
                 }
@@ -589,38 +633,38 @@ public class FarBlue12Ball extends LinearOpMode {
             //endregion
 
             //region LIMELIGHT VISION PROCESSING
-//            if(createLimelightPathOn){
-//                LLResult result = limelight.getLatestResult();
-//                if (result != null && result.isValid()) {
-//
-//                    List <LLResultTypes.DetectorResult> detector = result.getDetectorResults();
-//                    double maxArea = 0;
-//                    int maxAreaIndex=0;
-//
-//                    for (int i=0;i<detector.size();i++) { //checks all results of detector
-//                        LLResultTypes.DetectorResult detected = detector.get(i);
-//
-//                        if(detected.getTargetArea()>maxArea) {
-//                            maxArea=detected.getTargetArea();
-//                            maxAreaIndex=i;
-//                        }
-//                    }
-//                    LLResultTypes.DetectorResult maxDetected = detector.get(maxAreaIndex);
-//                    ballTx = maxDetected.getTargetXDegrees();
-//                    ballTy = maxDetected.getTargetYDegrees()+ballYoffset;
-//
-//                    telemetry.addData("# of balls detected",detector.size());
-//                    telemetry.addData("Closest ID",maxDetected.getClassId());
-//                    telemetry.addData("Closest ball",maxDetected.getClassName());
-//                    telemetry.addData("Ball offset from camera","X: %.3f Y: %.3f",ballTx,ballTy);
-//                    pathToBall(ballTx,ballTy);
-//                    createLimelightPathOn=false;
-//                } else {
-//                    telemetry.addData("# of balls detected",0);
-//                    ballTx=0;
-//                    ballTy=0;
-//                }
-//            }
+            if(createLimelightPathOn){
+                LLResult result = limelight.getLatestResult();
+                if (result != null && result.isValid()) {
+
+                    List <LLResultTypes.DetectorResult> detector = result.getDetectorResults();
+                    double maxArea = 0;
+                    int maxAreaIndex=0;
+
+                    for (int i=0;i<detector.size();i++) { //checks all results of detector
+                        LLResultTypes.DetectorResult detected = detector.get(i);
+
+                        if(detected.getTargetArea()>maxArea) {
+                            maxArea=detected.getTargetArea();
+                            maxAreaIndex=i;
+                        }
+                    }
+                    LLResultTypes.DetectorResult maxDetected = detector.get(maxAreaIndex);
+                    ballTx = maxDetected.getTargetXDegrees();
+                    ballTy = maxDetected.getTargetYDegrees()+ballYoffset;
+
+                    telemetry.addData("# of balls detected",detector.size());
+                    telemetry.addData("Closest ID",maxDetected.getClassId());
+                    telemetry.addData("Closest ball",maxDetected.getClassName());
+                    telemetry.addData("Ball offset from camera","X: %.3f Y: %.3f",ballTx,ballTy);
+                    pathToBall(ballTx,ballTy);
+                    createLimelightPathOn=false;
+                } else {
+                    telemetry.addData("# of balls detected",0);
+                    ballTx=0;
+                    ballTy=0;
+                }
+            }
             //endregion
 
             //region READ MOTIF
@@ -635,140 +679,128 @@ public class FarBlue12Ball extends LinearOpMode {
                         greenPos = 2;
                     }
                     motifOn=false;
-                    StateVars.patternTagID = april;
+                    follower.breakFollowing();
                     subState++;
                 }
                 else if(!follower.isBusy()){
                     motifOn=false;
+                    follower.breakFollowing();
                     subState++;
                 }
             }
             //endregion
 
             //region INTAKE
-            char detectedColor = getRealColor();
-            boolean present = isBallPresent();
-            int currentSlot = indexToSlot(spindexerIndex);
-
             if(intakeOn&&runtime.milliseconds()>timeout){
-                intake.setPower(1);
-                transOn=false;
-                if (present && savedBalls[currentSlot] == 'n' && spindexerAtTarget) {
-
-                    if (detectedColor != 'n') {
-                        savedBalls[currentSlot] = detectedColor;
-                        spinClock();
-                    }
+                if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'&&spindexerAtTarget){//detect one ball intake
+                    savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
+                    spinClock();
                 }
 
                 if(spindexerFull()||!follower.isBusy()){
-                    if(spindexerFull()){
-                        intake.setPower(0);
-                    }
                     follower.breakFollowing();
                     intakeOn = false;
-                    pidKp += 0.0015;
 
                     subState++;
                 }
-            }else{
-                getRealColor();
+            }
+            //endregion
+
+            //region INTAKE LIMELIGHT
+            if(intakeLimelightOn&&runtime.milliseconds()>timeout){
+                boolean gotBall = false;
+                if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'&&spindexerAtTarget){//detect one ball intake
+                    savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
+                    spinClock();
+                    gotBall=true;
+                }
+
+                if(gotBall||!follower.isBusy()){
+                    follower.breakFollowing();
+                    intakeLimelightOn = false;
+
+                    subState++;
+                }
             }
             //endregion
 
             //region HOOD CONTROL
+            double nowMs = runtime.milliseconds();
+            double dtSec = (nowMs - pidLastTimeMs) / 1000.0;
+            if (dtSec <= 0.0) dtSec = 1.0 / 50.0; // fallback
             //(angles must be negative for our direction)
             updateHoodPID(hoodAngle + hoodOffset, dtSec);
             //endregion
 
             //region SPINDEXER
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle+45, dtSec);
-            //endregion
-
-            //region SHOOT PREP
-            if(autoShootOn&&shootingState==0&&!motifOn){
-                int greenIn=-1;
-                for(int i=0;i<3;i++){
-                    if(savedBalls[i]=='g'){
-                        greenIn=i;
-                    }
-                }
-                if(greenIn==-1){
-                    for(int i=0;i<3;i++){
-                        if(savedBalls[i]=='n' || savedBalls[i]=='b'){
-                            greenIn=i;
-                        }
-                    }
-                }
-                if(greenIn==-1) greenIn=0;
-
-                int diff = (greenIn + greenPos) % 3;
-                if(diff==0) spindexerIndex=4;
-                else if(diff==1) spindexerIndex=0;
-                else spindexerIndex=2;
-                spindexerAtTarget=false;
-                timeout = runtime.milliseconds() + 300;
-
-                shootingState++;
-            }
+            updateSpindexerPID(targetAngle, dtSec);
             //endregion
 
             //region AUTO SHOOTING
-            //prevent ball not firing
-//            if(autoShootOn&&shootingState==1&&spindexerAtTarget) transOn = true;
-
-            if(autoShootOn&&runtime.milliseconds()>timeout&&(shootReady||!follower.isBusy())){
+            if(autoShootOn&&!follower.isBusy()&&runtime.milliseconds()>timeout){
                 intake.setPower(0);
-//                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-//                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
-                if(shootingState==1&&spindexerAtTarget){
-                    transOn = true;
-                    if(turretAtTarget){
-                        spinClock();
-
-                        timeout=runtime.milliseconds()+300;
-                        shootingState++;
+                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+//                if(shootingState==0&&avgSpeed > flySpeedTarget * 0.94 && avgSpeed < flySpeedTarget * 1.08){
+                if(shootingState==0){
+                    int greenIn=-1;
+                    for(int i=0;i<3;i++){
+                        if(savedBalls[i]=='g'){
+                            greenIn=i;
+                        }
                     }
+                    if(greenIn==-1){
+                        for(int i=0;i<3;i++){
+                            if(savedBalls[i]=='n'){
+                                greenIn=i;
+                            }
+                        }
+                    }
+                    if(greenIn==-1) greenIn=0;
+
+                    int diff = (greenIn + greenPos) % 3;
+                    if(diff==0) spindexerIndex=4;
+                    else if(diff==1) spindexerIndex=0;
+                    else spindexerIndex=2;
+
+                    timeout=runtime.milliseconds()+1000;
+                    shootingState++;
+                }
+                else if(shootingState==1){
+                    transOn = true;
+                    spindexerIndex = (spindexerIndex-2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+
+                    timeout=runtime.milliseconds()+500;
+                    shootingState++;
                 }
                 else if(shootingState==2){
-                    spinClock();
+                    spindexerIndex = (spindexerIndex-2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
 
-                    timeout=runtime.milliseconds()+300;
+                    timeout=runtime.milliseconds()+500;
                     shootingState++;
                 }
                 else if(shootingState==3){
-                    spinClock();
+                    spindexerIndex = (spindexerIndex-2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
                     savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
-
-                    shootingState++;
-                }
-                else if(shootingState==4&&spindexerAtTarget){
-                    shootReady = false;
                     autoShootOn = false;
+
+                    timeout=runtime.milliseconds()+500;
                     shootingState++;
                     subState=0;
-                    if (pathState != 3 || runtime.milliseconds() > 25000) {
-                        pathState++;
-                    }
+                    pathState++;
                 }
             }
             //endregion
 
             //region FLYWHEEL
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-            flywheel.updateFlywheelPID(
-                    flySpeed,
-                    dtSec,
-                    voltage
-            );
+            double baseF = 12.0/2450.0;
+            double compensatedF = baseF * (13.0/voltage);
+            fly1.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
+            fly2.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
 
-            double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-
-//            if(avgSpeed >= flySpeed){
-//                flyKd = 3;
-//            }
-//            tempServo.setPosition(avgSpeed/(flySpeed*2));
+            fly1.setVelocity(flySpeed);
+            fly2.setVelocity(flySpeed);
             //endregion
 
             //region TURRET
@@ -784,17 +816,8 @@ public class FarBlue12Ball extends LinearOpMode {
             }
             //endregion
 
-            //region GATE CUTOFF
-            if(runtime.milliseconds()>timeout&&gateCutoff){
-                gateCutoff = false;
-                follower.breakFollowing();
-            }
-            //endregion
-
             //region TELEMETRY
             if(!running) telemetry.addLine("Done!");
-
-            telemetry.addData("Encoder Fly Speed",avgSpeed);
             telemetry.addData("path state", pathState);
             telemetry.addData("sub state",subState);
             telemetry.addData("shooting state",shootingState);
@@ -804,7 +827,6 @@ public class FarBlue12Ball extends LinearOpMode {
             telemetry.addData("Green Position",greenPos);
             telemetry.addData("actual fly speed","Wheel 1: %.1f Wheel 2: %.1f", fly1.getVelocity(), fly2.getVelocity());
             telemetry.addData("spindexer pos",spindexerIndex);
-            telemetry.addData("spindexer at target",spindexerAtTarget);
             telemetry.update();
             //endregion
         }
@@ -824,13 +846,7 @@ public class FarBlue12Ball extends LinearOpMode {
         return 'n';
     }
     private char getDetectedColor(NormalizedColorSensor sensor){
-        double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
-        if (Double.isNaN(dist) || dist > 6.2) {
-            return 'n';
-        }
-
         NormalizedRGBA colors = sensor.getNormalizedColors();
-        if (colors.alpha == 0) return 'n';
         float nRed = colors.red/colors.alpha;
         float nGreen = colors.green/colors.alpha;
         float nBlue = colors.blue/colors.alpha;
@@ -873,22 +889,16 @@ public class FarBlue12Ball extends LinearOpMode {
         }
     }
     private boolean isBallPresent() {
-        double dist1 = ((DistanceSensor) color1).getDistance(DistanceUnit.CM);
-        double dist2 = ((DistanceSensor) color2).getDistance(DistanceUnit.CM);
+        NormalizedRGBA colors = color1.getNormalizedColors();
+        float a = colors.alpha;
 
-        NormalizedRGBA colors1 = color1.getNormalizedColors();
-        NormalizedRGBA colors2 = color2.getNormalizedColors();
-
-        boolean s1Detected = !Double.isNaN(dist1) && dist1 < 5.8;
-        boolean s2Detected = !Double.isNaN(dist2) && dist2 < 6.1;
-
-        if (colors1.alpha == 0) {
-            s1Detected = false;
+        if (!ballPresentLatched && a > BALL_ALPHA_ON) {
+            ballPresentLatched = true;   // turn ON when we cross the high threshold
+        } else if (ballPresentLatched && a < BALL_ALPHA_OFF) {
+            ballPresentLatched = false;  // turn OFF when we drop below the low threshold
         }
-        if (colors2.alpha == 0) {
-            s2Detected = false;
-        }
-        return s1Detected || s2Detected;
+
+        return ballPresentLatched;
     }
     private void updateSpindexerPID(double targetAngle, double dt) {
         double ccwOffset = -6.0;
@@ -917,10 +927,7 @@ public class FarBlue12Ball extends LinearOpMode {
         integral = clamp(integral, -integralLimit, integralLimit);
 
         // derivative
-        double dRaw = (error - lastError) / Math.max(dt, 1e-6);
-        dFiltered = dAlpha * dFiltered + (1.0 - dAlpha) * dRaw;
-        double d = dFiltered;
-
+        double d = (error - lastError) / Math.max(dt, 1e-6);
 
         // PIDF output (interpreted as servo power)
         double out = pidKp * error + pidKi * integral + pidKd * d;
@@ -1038,9 +1045,6 @@ public class FarBlue12Ball extends LinearOpMode {
             tuIntegral *= 0.2;
         }
 
-        //to know its set
-        turretAtTarget = (Math.abs(error) <= tuToleranceDeg + 5);
-
         // apply powers (flip one if your servo is mirrored - change sign if needed)
         turret1.setPower(out);
         turret2.setPower(out);
@@ -1130,7 +1134,9 @@ public class FarBlue12Ball extends LinearOpMode {
 
     private boolean spindexerFull(){
         for(int i=0;i<3;i++){
-            if(savedBalls[i]=='n') return false;
+            if(savedBalls[i]=='n'){
+                return false;
+            }
         }
         return true;
     }

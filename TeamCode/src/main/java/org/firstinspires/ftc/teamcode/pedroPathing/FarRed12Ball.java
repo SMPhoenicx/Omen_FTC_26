@@ -172,12 +172,16 @@ public class FarRed12Ball extends LinearOpMode {
     private double integralLimit = 500.0;
     private double pidLastTimeMs = 0.0;
 
+
+    private double dFiltered = 0.0;
+    private double dAlpha = 0.85;   // 0.80–0.90 works; higher = smoother
+
     // Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
 
     // Position Presets (6 slots)
-    private final double[] SPINDEXER_POSITIONS = {340, 40, 100, 160, 220, 280};
+    private final double[] SPINDEXER_POSITIONS = {332, 32, 92, 152, 212, 272};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
 
@@ -195,7 +199,7 @@ public class FarRed12Ball extends LinearOpMode {
         WAIT_FOR_BALL
     }
 
-    private SpindexerState spState = SpindexerState.IDLE;
+    private FarRed12Ball.SpindexerState spState = FarRed12Ball.SpindexerState.IDLE;
     private int currentSlot = -1;
     private long settleStartMs = 0;
 
@@ -241,16 +245,16 @@ public class FarRed12Ball extends LinearOpMode {
     public void createPoses(){
         startPose = new Pose(87,8,Math.toRadians(0));
 
-        pickup3[0] = new Pose(98,9,Math.toRadians(0));
-        pickup3[1] = new Pose(140,9,Math.toRadians(0));
+        pickup3[0] = new Pose(88,9,Math.toRadians(0));
+        pickup3[1] = new Pose(139.5,9,Math.toRadians(0));
 
-        pickup2[0] = new Pose(92,64,Math.toRadians(0));
+        pickup2[0] = new Pose(69,64,Math.toRadians(0));
         pickup2[1] = new Pose(134,64,Math.toRadians(0));
 
-        pickup1[0] = new Pose(90 ,38,Math.toRadians(0));
+        pickup1[0] = new Pose(76,38,Math.toRadians(0));
         pickup1[1] = new Pose(134,38,Math.toRadians(0));
 
-        shoot1 = new Pose(85,19,Math.toRadians(0));
+        shoot1 = new Pose(86,19,Math.toRadians(0));
         movePoint = new Pose(114,17,Math.toRadians(0));
     }
 
@@ -320,8 +324,8 @@ public class FarRed12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1355;
-        int shoot0change = -5;
+        int flySpeed = 1360;
+        int shoot0change = 5;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -407,11 +411,12 @@ public class FarRed12Ball extends LinearOpMode {
         follower.setStartingPose(startPose);
         createPaths();
 
+        StateVars.lastPose = startPose;
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
         tuPos = -84;
-        flySpeed -= shoot0change;
+        flySpeed += shoot0change;
 
 
         //WAIT
@@ -455,7 +460,7 @@ public class FarRed12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -130;
+                            tuPos = -127;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -516,7 +521,7 @@ public class FarRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
-                            tuPos = -130;
+                            tuPos = -126.5;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -864,7 +869,9 @@ public class FarRed12Ball extends LinearOpMode {
         integral = clamp(integral, -integralLimit, integralLimit);
 
         // derivative
-        double d = (error - lastError) / Math.max(dt, 1e-6);
+        double dRaw = (error - lastError) / Math.max(dt, 1e-6);
+        dFiltered = dAlpha * dFiltered + (1.0 - dAlpha) * dRaw;
+        double d = dFiltered;
 
         // PIDF output (interpreted as servo power)
         double out = pidKp * error + pidKi * integral + pidKd * d;
