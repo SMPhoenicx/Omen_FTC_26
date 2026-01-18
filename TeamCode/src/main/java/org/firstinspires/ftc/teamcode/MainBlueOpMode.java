@@ -91,7 +91,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Servos
     private Servo led = null;
-    private CRServo hood = null;
+    private Servo hood = null;
     private CRServo spin1 = null;
     private CRServo spin2 = null;
     private CRServo turret1 = null;
@@ -99,7 +99,6 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Sensors
     private AnalogInput spinEncoder;
-    private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
     private NormalizedColorSensor color1 = null;
     private NormalizedColorSensor color2 = null;
@@ -122,19 +121,6 @@ public class MainBlueOpMode extends LinearOpMode
     //endregion
 
     //region HOOD SYSTEM
-    // Hood PIDF Constants
-    private double hoodKp = 0.0048;
-    private double hoodKi = 0.00014;
-    private double hoodKd = 0.00;
-    private double hoodKf = 0.0;
-
-    // Hood PID State
-    private double hoodIntegral = 0.0;
-    private double hoodLastError = 0.0;
-    private double hoodIntegralLimit = 50.0;
-    private double hoodOutputDeadband = 0.05;
-    private double hoodToleranceDeg = 2.0;
-
     // Hood Positions
     private double hoodAngle = 0;
     private double hoodOffset = 0;
@@ -142,9 +128,9 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
-    private double pidKp = 0.0067;
-    private double pidKi = 0.00065;
-    private double pidKd = 0.00045;
+    private double pidKp = 0.0065;
+    private double pidKi = 0.00057;
+    private double pidKd = 0.00043;
     private double pidKf = 0.000;
 
     // Spindexer PID State
@@ -203,9 +189,8 @@ public class MainBlueOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1026, 1059, 1085, 1131, 1151, 1158, 1162, 1229, 1255, 1263, 1267, 1254, 1278, 1295, 1363, 1387, 1414};
-    private static final double[] HOOD_ANGLES =         {114.6, 77.4, 29.8, 3.5, -40.9, -70, -73.3, -83.3, -119.2, -122.4, -122.7, -126.5, -126.5, -131.1, -142.9, -146.5, -148.5, -151.5};
-
+    private static final double[] FLY_SPEEDS =          {1005, 1026, 1059, 1083, 1129, 1143, 1155, 1162, 1219, 1251, 1261, 1267, 1256, 1283, 1297, 1370, 1393, 1420};
+    private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
     private static final double ALPHA = 0.8;
     private boolean flyHoodLock = false;
@@ -231,7 +216,7 @@ public class MainBlueOpMode extends LinearOpMode
     private static final double goalX = 0;
     private static final double goalY = 143;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(135, 8.9, Math.toRadians(180));
+    private static final Pose LOCALIZE_POSE = new Pose(135, 8.9, Math.toRadians(0));
     private Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     private static final double TAG_X = 14.4;
     private static final double TAG_Y = 129.0;
@@ -281,13 +266,12 @@ public class MainBlueOpMode extends LinearOpMode
         spin1 = hardwareMap.get(CRServo.class, "spin1");
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class, "led");
-        hood = hardwareMap.get(CRServo.class, "hood");
+        hood = hardwareMap.get(Servo.class, "hood");
         turret1 = hardwareMap.get(CRServo.class, "tu1");
         turret2 = hardwareMap.get(CRServo.class, "tu2");
 
         // Initialize Encoders
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
-        hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
 
         // Initialize Sensors
@@ -313,6 +297,7 @@ public class MainBlueOpMode extends LinearOpMode
         spin2.setDirection(CRServo.Direction.FORWARD);
         turret1.setDirection(CRServo.Direction.FORWARD);
         turret2.setDirection(CRServo.Direction.FORWARD);
+        hood.setDirection(Servo.Direction.REVERSE);
         //endregion
         flywheel = new FlywheelPIDController(
               hardwareMap.get(DcMotorEx.class, "fly1"),
@@ -490,7 +475,7 @@ public class MainBlueOpMode extends LinearOpMode
             if (!flyHoodLock) {
                 flySpeed = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, FLY_SPEEDS);
                 hoodAngle = interpolate(smoothedRange, ODOM_RANGE_SAMPLES, HOOD_ANGLES);
-                hoodAngle = Math.max(hoodAngle, -130); //clamp to prevent it going too high
+                hoodAngle = Math.max(hoodAngle, -140); //clamp to prevent it going too high
             }
 
             telemetry.addData("Odom Range", "%.1f inches", smoothedRange);
@@ -567,7 +552,7 @@ public class MainBlueOpMode extends LinearOpMode
                 hoodOffset += 5;
             }
             // Update Hood PID
-            updateHoodPID(hoodAngle + hoodOffset, dtSec);
+            hood.setPosition((hoodAngle + hoodOffset)/355.0);
             //endregion
 
             //region INTAKE CONTROL
@@ -678,7 +663,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle + 45, dtSec);
+            updateSpindexerPID(targetAngle + GlobalOffsets.spindexerOffset, dtSec);
             //endregion
 
             //region GOAL TRACKING
@@ -882,48 +867,6 @@ public class MainBlueOpMode extends LinearOpMode
     }
     //endregion
 
-    private void updateHoodPID(double targetAngle, double dt) {
-        // Read hood angle from encoder (0..360)
-        double angle = mapVoltageToAngle360(hoodEncoder.getVoltage(), 0.01, 3.29);
-
-        // Compute shortest signed error [-180,180]
-        double error = -angleError(targetAngle, angle);
-
-        // Integral with anti-windup
-        hoodIntegral += error * dt;
-        hoodIntegral = clamp(hoodIntegral, -hoodIntegralLimit, hoodIntegralLimit);
-
-        // Derivative
-        double d = (error - hoodLastError) / Math.max(dt, 1e-6);
-
-        // PIDF output
-        double out = hoodKp * error + hoodKi * hoodIntegral + hoodKd * d;
-
-        // Feedforward to overcome stiction
-        if (Math.abs(error) > 1.0) {
-            out += hoodKf * Math.signum(error);
-        }
-
-        // Clamp to [-1,1] and apply deadband
-        out = Range.clip(out, -1.0, 1.0);
-        if (Math.abs(out) < hoodOutputDeadband) out = 0.0;
-
-        // If within tolerance, zero output and decay integrator
-        if (Math.abs(error) <= hoodToleranceDeg) {
-            out = 0.0;
-            hoodIntegral *= 0.2;
-        }
-
-        // Apply power to hood servo
-        hood.setPower(out);
-
-        // Store error for next iteration
-        hoodLastError = error;
-
-        // Telemetry
-        telemetry.addData("Hood Target", "%.1f°", targetAngle);
-    }
-
     //region COLOR AND ARTIFACT RELATED
     private void spinBallLED(){
         if(spindexerIndex % 2 == 0){
@@ -953,8 +896,8 @@ public class MainBlueOpMode extends LinearOpMode
     }
 
     private char getRealColor(){
-        char c1 = getDetectedColor(color1);
-        char c2 = getDetectedColor(color2);
+        char c1 = getDetectedColor1(color1);
+        char c2 = getDetectedColor2(color2);
 
         if(c1=='p'||c2=='p'){
             return 'p';
@@ -964,9 +907,33 @@ public class MainBlueOpMode extends LinearOpMode
         }
         return 'n';
     }
-    private char getDetectedColor(NormalizedColorSensor sensor){
+
+    private char getDetectedColor1(NormalizedColorSensor sensor){
         double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
-        if (Double.isNaN(dist) || dist > 6.4) {
+        telemetry.addData("Distance X", dist);
+        if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist1) {
+            return 'n';
+        }
+
+        NormalizedRGBA colors = sensor.getNormalizedColors();
+        if (colors.alpha == 0) return 'n';
+        float nRed = colors.red/colors.alpha;
+        float nGreen = colors.green/colors.alpha;
+        float nBlue = colors.blue/colors.alpha;
+
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
+        }
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
+            return 'g';
+        }
+        return 'n';
+    }
+
+    private char getDetectedColor2(NormalizedColorSensor sensor){
+        double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
+        telemetry.addData("Distance X", dist);
+        if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist2) {
             return 'n';
         }
 
@@ -992,8 +959,8 @@ public class MainBlueOpMode extends LinearOpMode
         NormalizedRGBA colors1 = color1.getNormalizedColors();
         NormalizedRGBA colors2 = color2.getNormalizedColors();
 
-        boolean s1Detected = !Double.isNaN(dist1) && dist1 < 5.8;
-        boolean s2Detected = !Double.isNaN(dist2) && dist2 < 6.1;
+        boolean s1Detected = !Double.isNaN(dist1) && dist1 < GlobalOffsets.colorSensorDist1;
+        boolean s2Detected = !Double.isNaN(dist2) && dist2 < GlobalOffsets.colorSensorDist2;
 
         if (colors1.alpha == 0) {
             s1Detected = false;

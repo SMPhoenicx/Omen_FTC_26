@@ -9,17 +9,22 @@ import com.pedropathing.geometry.FuturePose;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.HeadingInterpolator;
 import com.pedropathing.paths.PathChain;
+import com.pedropathing.ftc.PoseConverter;
+import com.pedropathing.ftc.InvertedFTCCoordinates;
+import com.pedropathing.paths.PathConstraints;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
@@ -35,6 +40,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.teamcode.FlywheelPIDController;
+import org.firstinspires.ftc.teamcode.GlobalOffsets;
 import org.firstinspires.ftc.teamcode.StateVars;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
@@ -44,7 +51,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@Autonomous(name="Far Red 12 Ball Auto", group="Robot")
+@Autonomous(name="Far Red 12 Ball", group="Robot")
 public class FarRed12Ball extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
@@ -72,7 +79,7 @@ public class FarRed12Ball extends LinearOpMode {
     private CRServo spin1 = null;
     private CRServo spin2 = null;
     private Servo led = null;
-    private CRServo hood = null;
+    private Servo hood = null;
     private CRServo turret1 = null;
     private CRServo turret2 = null;
     //TODO temp servo for tuning flywheel pid
@@ -81,7 +88,6 @@ public class FarRed12Ball extends LinearOpMode {
     // ENCODERS
     private GoBildaPinpointDriver pinpoint = null;
     private AnalogInput spinEncoder;
-    private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
 
     //COLOR
@@ -127,44 +133,23 @@ public class FarRed12Ball extends LinearOpMode {
 
     //region FLYWHEEL SYSTEM
     // Flywheel PID Constants
-    double flyKp = 24.5;
-    double flyKi = 0.8;//shoots 3 balls well at 15, 0.5, 3
-    double flyKd = 8;//8 for spinup, 3 when shooting
-    double flyKiOffset = 0.0;
-
+    private FlywheelPIDController flywheel;
     private boolean shootReady = false;
     //endregion
 
     //region HOOD SYSTEM
-    // Hood PIDF Constants
-    private double hoodKp = 0.0048;
-    private double hoodKi = 0.00014;
-    private double hoodKd = 0.00;
-    private double hoodKf = 0.0;
-
-    // Hood PID State
-    private double hoodIntegral = 0.0;
-    private double hoodLastError = 0.0;
-    private double hoodIntegralLimit = 50.0;
-    private double hoodOutputDeadband = 0.05;
-    private double hoodToleranceDeg = 2.0;
-
-    // Hood Tuning Adjustments
-    private final double hoodKpUp = 0.005;
-    private final double hoodKiUp = 0.00001;
-    private final double hoodKdUp = 0.005;
 
     // Hood Positions
-    private double hoodAngle = -70;
+    private double hoodAngle = 34.6;
     private double hoodOffset = 0;
     //endregion
 
     //region SPINDEXER SYSTEM
     // PIDF Constants
-    private double pidKp = 0.009;
-    private double pidKi = 0.0000043;
-    private double pidKd = 0.00000014;
-    private double pidKf = 0.001;
+    private double pidKp = 0.0052;
+    private double pidKi = 0.0;
+    private double pidKd = 0.0009;
+    private double pidKf = 0.007;
 
     // PID State
     private double integral = 0.0;
@@ -174,7 +159,7 @@ public class FarRed12Ball extends LinearOpMode {
 
 
     private double dFiltered = 0.0;
-    private double dAlpha = 0.85;   // 0.80–0.90 works; higher = smoother
+    private double dAlpha = 0.86;
 
     // Control Parameters
     private final double positionToleranceDeg = 2.0;
@@ -199,7 +184,7 @@ public class FarRed12Ball extends LinearOpMode {
         WAIT_FOR_BALL
     }
 
-    private FarRed12Ball.SpindexerState spState = FarRed12Ball.SpindexerState.IDLE;
+    private SpindexerState spState = SpindexerState.IDLE;
     private int currentSlot = -1;
     private long settleStartMs = 0;
 
@@ -237,79 +222,99 @@ public class FarRed12Ball extends LinearOpMode {
 
     // Turret Position
     private double tuPos = 0;
-
-    // Simple low-pass on the camera error to kill jitter
-    private double filteredHeadingError = 0.0;
     //endregion
 
+    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 1.8, 1.6);
+
     public void createPoses(){
-        startPose = new Pose(87,8,Math.toRadians(0));
+        startPose = new Pose(144-56.8,8,Math.toRadians(0));
 
-        pickup3[0] = new Pose(88,9,Math.toRadians(0));
-        pickup3[1] = new Pose(139.5,9,Math.toRadians(0));
+        //0 is control point, 1 is endpoint
+        pickup1[0] = new Pose(144-60.86,40.52,Math.toRadians(0));
+        pickup1[1] = new Pose(144-10,35.68,Math.toRadians(0));
 
-        pickup2[0] = new Pose(69,64,Math.toRadians(0));
-        pickup2[1] = new Pose(134,64,Math.toRadians(0));
+        pickup2[0] = new Pose(144-64.0,68.6,Math.toRadians(0));
+        pickup2[1] = new Pose(144-10,60.55,Math.toRadians(0));
 
-        pickup1[0] = new Pose(76,38,Math.toRadians(0));
-        pickup1[1] = new Pose(134,38,Math.toRadians(0));
+        pickup3[0] = new Pose(144-58.25,7.76,Math.toRadians(0));
+        pickup3[1] = new Pose(144-10.4,8.53,Math.toRadians(0));
 
-        shoot1 = new Pose(86,19,Math.toRadians(0));
-        movePoint = new Pose(114,17,Math.toRadians(0));
+        shoot1 = new Pose(144-58,19,Math.toRadians(0));
+        movePoint = new Pose(144-35.5,18.5,Math.toRadians(90));
     }
 
     public void createPaths(){
-        //if in the future pickupPath [0] and [1] could be combines that would be hype but the reason they're seperated rn is so that pickupPath[1] can be run at a lower max speed (since we gotta drive slower when intaking
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierCurve(startPose,shoot1))
-                .setLinearHeadingInterpolation(startPose.getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.87,()-> shootReady=true)
+                .addPath(new BezierLine(startPose,shoot1))
+                .setConstraints(shootConstraints)
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.87,()-> {
+                    shootReady=true;
+                    timeout = 400;
+                })
                 .build();
         pickupPath1 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup1[0],pickup1[1]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup1[1].getHeading())
-                .addParametricCallback(0.15,()->{
-                    follower.setMaxPower(0.3);
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.2,()->{
+                    follower.setMaxPower(0.33);
                     intakeOn = true;
+                    pidKp -= 0.0015;
                 })
                 .setTimeoutConstraint(500)
                 .build();
         pickupPath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[1].getHeading())
-                .addParametricCallback(0.5,()->{
-                    follower.setMaxPower(0.3);
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.35,()->{
+                    follower.setMaxPower(0.36);
                     intakeOn = true;
+                    pidKp -= 0.0015;
                 })
                 .setTimeoutConstraint(500)
                 .build();
         pickupPath3 = follower.pathBuilder()
                 .addPath(new BezierCurve(shoot1,pickup3[0],pickup3[1]))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),pickup3[1].getHeading())
-                .addParametricCallback(0.6,()->{
-                    follower.setMaxPower(0.3);
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.33,()->{
+                    follower.setMaxPower(0.26);
                     intakeOn = true;
+                    pidKp -= 0.0015;
                 })
                 .setTimeoutConstraint(500)
                 .build();
         scorePath1 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup1[1],shoot1))
-                .setLinearHeadingInterpolation(pickup1[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.99,()-> shootReady=true)
+                .addPath(new BezierLine(pickup1[1],shoot1))
+                .setConstraints(shootConstraints)
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.5,()-> {
+                    follower.setMaxPower(0.7);
+                })
+                .addParametricCallback(0.983,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup2[1],pickup2[0],shoot1))
-                .setLinearHeadingInterpolation(pickup2[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.97,()-> shootReady=true)
+                .addPath(new BezierLine(pickup2[1],shoot1))
+                .setConstraints(shootConstraints)
+                .setTranslationalConstraint(1.5)
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.5,()-> {
+                    follower.setMaxPower(0.7);
+                })
+                .addParametricCallback(0.99,()-> shootReady=true)
                 .build();
         scorePath3 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup3[1],shoot1))
-                .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.98,()-> shootReady=true)
+                .addPath(new BezierLine(pickup3[1],shoot1))
+                .setConstraints(shootConstraints)
+                .setTranslationalConstraint(1.5)
+                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addParametricCallback(0.4,()-> {
+                    follower.setMaxPower(0.5);
+                })
+                .addParametricCallback(0.99,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,movePoint))
-                .setLinearHeadingInterpolation(shoot1.getHeading(),movePoint.getHeading())
+                .addPath(new BezierLine(shoot1,movePoint))
+                .setLinearHeadingInterpolation(shoot1.getHeading(), movePoint.getHeading())
                 .build();
     }
 
@@ -324,8 +329,8 @@ public class FarRed12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1360;
-        int shoot0change = 5;
+        int flySpeed = 1393;
+        int shoot0change = -85;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -350,7 +355,7 @@ public class FarRed12Ball extends LinearOpMode {
         spin1 = hardwareMap.get(CRServo.class, "spin1");
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
-        hood = hardwareMap.get(CRServo.class,"hood");
+        hood = hardwareMap.get(Servo.class,"hood");
         turret1 = hardwareMap.get(CRServo.class, "tu1");
         turret2 = hardwareMap.get(CRServo.class, "tu2");
 //        tempServo = hardwareMap.get(Servo.class,"speedometer");
@@ -358,16 +363,11 @@ public class FarRed12Ball extends LinearOpMode {
         //ENCODERS
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
-        hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
 
         //COLOR SENSOR
         color1 = hardwareMap.get(NormalizedColorSensor.class,"Color 1");
         color2 = hardwareMap.get(NormalizedColorSensor.class,"Color 2");
-
-        //MODES
-        fly1.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        fly2.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         //DIRECTIONS
         fly1.setDirection(DcMotor.Direction.FORWARD);
@@ -376,12 +376,18 @@ public class FarRed12Ball extends LinearOpMode {
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
+        hood.setDirection(Servo.Direction.REVERSE);
 
         // Hubs
         List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
         for (LynxModule hub : allHubs) {
             hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
         }
+        flywheel = new FlywheelPIDController(
+                hardwareMap.get(DcMotorEx.class, "fly1"),
+                hardwareMap.get(DcMotorEx.class, "fly2")
+        );
+        flywheel.teleopMultiplier = 1.0;
         //endregion
 
         //region CAMERA INIT
@@ -398,14 +404,13 @@ public class FarRed12Ball extends LinearOpMode {
         //region INITIALIZE PEDRO
         createPoses();
 
+        Pose2D ftcStartPose = PoseConverter.poseToPose2D(
+                startPose,
+                InvertedFTCCoordinates.INSTANCE
+        );
+
         pinpoint.resetPosAndIMU();
-        pinpoint.setPosition(new Pose2D(
-                DistanceUnit.INCH,
-                startPose.getX(),
-                startPose.getY(),
-                AngleUnit.RADIANS,
-                startPose.getHeading()
-        ));
+        pinpoint.setPosition(ftcStartPose);
 
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
@@ -415,9 +420,8 @@ public class FarRed12Ball extends LinearOpMode {
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
-        tuPos = -84;
-        flySpeed += shoot0change;
-
+        tuPos = -135;
+        flySpeed -= shoot0change;
 
         //WAIT
         waitForStart();
@@ -446,6 +450,9 @@ public class FarRed12Ball extends LinearOpMode {
             Pose robotPose = follower.getPose();
             //endregion
 
+            if (runtime.milliseconds() > 27000) {
+                pathState = 4;
+            }
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
                 switch(pathState){
@@ -455,12 +462,12 @@ public class FarRed12Ball extends LinearOpMode {
                             follower.followPath(scorePath0,true);
                             motifOn = true;
 
-                            timeout = runtime.milliseconds()+500;
+                            timeout = runtime.milliseconds()+850;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -127;
+                            tuPos = -138;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -475,12 +482,14 @@ public class FarRed12Ball extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
 
+                            flySpeed += shoot0change;
                             subState++;
                         }
                         //INTAKE is subState 1
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath1,true);
+                            tuPos = -139;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -501,6 +510,7 @@ public class FarRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
+                            tuPos -= 1.5;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -519,9 +529,9 @@ public class FarRed12Ball extends LinearOpMode {
                         }
                         //INTAKE is subState 1
                         else if(subState==2){
+                            timeout = runtime.milliseconds() + 500;
                             follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
-                            tuPos = -126.5;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -533,7 +543,12 @@ public class FarRed12Ball extends LinearOpMode {
 
                     case 4:
 //                        transOn=false;
-                        follower.followPath(moveScore);
+                        //TODO Check if this works
+                        PathChain tempPath = follower.pathBuilder()
+                                .addPath(new BezierLine(follower.getPose(),movePoint))
+                                .setLinearHeadingInterpolation(follower.getPose().getHeading(), movePoint.getHeading())
+                                .build();
+                        follower.followPath(tempPath);
                         pathState++;
 //                        flySpeed=0;
                         running=false;
@@ -614,12 +629,19 @@ public class FarRed12Ball extends LinearOpMode {
             //endregion
 
             //region INTAKE
+            char detectedColor = getRealColor();
+            boolean present = isBallPresent();
+            int currentSlot = indexToSlot(spindexerIndex);
+
             if(intakeOn&&runtime.milliseconds()>timeout){
                 intake.setPower(1);
                 transOn=false;
-                if(getRealColor()!='n'&&savedBalls[indexToSlot(spindexerIndex)]=='n'&&spindexerAtTarget){//detect one ball intake
-                    savedBalls[indexToSlot(spindexerIndex)]=getRealColor();
-                    spinClock();
+                if (present && savedBalls[currentSlot] == 'n' && spindexerAtTarget) {
+
+                    if (detectedColor != 'n') {
+                        savedBalls[currentSlot] = detectedColor;
+                        spinClock();
+                    }
                 }
 
                 if(spindexerFull()||!follower.isBusy()){
@@ -628,6 +650,7 @@ public class FarRed12Ball extends LinearOpMode {
                     }
                     follower.breakFollowing();
                     intakeOn = false;
+                    pidKp += 0.0015;
 
                     subState++;
                 }
@@ -638,12 +661,12 @@ public class FarRed12Ball extends LinearOpMode {
 
             //region HOOD CONTROL
             //(angles must be negative for our direction)
-            updateHoodPID(hoodAngle + hoodOffset, dtSec);
+            hood.setPosition((hoodAngle + hoodOffset)/355.0);
             //endregion
 
             //region SPINDEXER
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle, dtSec);
+            updateSpindexerPID(targetAngle+ GlobalOffsets.spindexerOffset, dtSec);
             //endregion
 
             //region SHOOT PREP
@@ -656,7 +679,7 @@ public class FarRed12Ball extends LinearOpMode {
                 }
                 if(greenIn==-1){
                     for(int i=0;i<3;i++){
-                        if(savedBalls[i]=='n'){
+                        if(savedBalls[i]=='n' || savedBalls[i]=='b'){
                             greenIn=i;
                         }
                     }
@@ -670,8 +693,7 @@ public class FarRed12Ball extends LinearOpMode {
                 spindexerAtTarget=false;
                 timeout = runtime.milliseconds() + 300;
 
-                if (pathState != 3 || runtime.milliseconds() > 26000)
-                    shootingState++;
+                shootingState++;
             }
             //endregion
 
@@ -684,9 +706,6 @@ public class FarRed12Ball extends LinearOpMode {
 //                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
                 if(shootingState==1&&spindexerAtTarget){
-                    flyKp = 28;
-                    flyKi = 0.7;
-                    flyKd = 1.5;
                     transOn = true;
                     if(turretAtTarget){
                         spinClock();
@@ -712,20 +731,20 @@ public class FarRed12Ball extends LinearOpMode {
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
-                    pathState++;
+                    if (pathState != 3 || runtime.milliseconds() > 25000) {
+                        pathState++;
+                    }
                 }
             }
             //endregion
 
             //region FLYWHEEL
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
-            double baseF = 12.0/2450.0;
-            double compensatedF = baseF * (13.0/voltage);
-            fly1.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
-            fly2.setVelocityPIDFCoefficients(flyKp, flyKi, flyKd, compensatedF);
-
-            fly1.setVelocity(flySpeed);
-            fly2.setVelocity(flySpeed);
+            flywheel.updateFlywheelPID(
+                    flySpeed,
+                    dtSec,
+                    voltage
+            );
 
             double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 
@@ -736,7 +755,7 @@ public class FarRed12Ball extends LinearOpMode {
             //endregion
 
             //region TURRET
-            updateTurretPID(-tuPos + 7, dtSec);
+            updateTurretPID(-tuPos+7, dtSec);
             //endregion
 
             //region TRANSFER
@@ -776,8 +795,8 @@ public class FarRed12Ball extends LinearOpMode {
 
     //region HELPER METHODS
     private char getRealColor(){
-        char c1 = getDetectedColor(color1);
-        char c2 = getDetectedColor(color2);
+        char c1 = getDetectedColor1(color1);
+        char c2 = getDetectedColor2(color2);
 
         if(c1=='p'||c2=='p'){
             return 'p';
@@ -787,8 +806,37 @@ public class FarRed12Ball extends LinearOpMode {
         }
         return 'n';
     }
-    private char getDetectedColor(NormalizedColorSensor sensor){
+
+    private char getDetectedColor1(NormalizedColorSensor sensor){
+        double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
+        if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist1) {
+            return 'n';
+        }
+
         NormalizedRGBA colors = sensor.getNormalizedColors();
+        if (colors.alpha == 0) return 'n';
+        float nRed = colors.red/colors.alpha;
+        float nGreen = colors.green/colors.alpha;
+        float nBlue = colors.blue/colors.alpha;
+
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
+        }
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
+            return 'g';
+        }
+        return 'n';
+    }
+
+    private char getDetectedColor2(NormalizedColorSensor sensor){
+        double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
+        telemetry.addData("Distance X", dist);
+        if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist2) {
+            return 'n';
+        }
+
+        NormalizedRGBA colors = sensor.getNormalizedColors();
+        if (colors.alpha == 0) return 'n';
         float nRed = colors.red/colors.alpha;
         float nGreen = colors.green/colors.alpha;
         float nBlue = colors.blue/colors.alpha;
@@ -831,16 +879,22 @@ public class FarRed12Ball extends LinearOpMode {
         }
     }
     private boolean isBallPresent() {
-        NormalizedRGBA colors = color1.getNormalizedColors();
-        float a = colors.alpha;
+        double dist1 = ((DistanceSensor) color1).getDistance(DistanceUnit.CM);
+        double dist2 = ((DistanceSensor) color2).getDistance(DistanceUnit.CM);
 
-        if (!ballPresentLatched && a > BALL_ALPHA_ON) {
-            ballPresentLatched = true;   // turn ON when we cross the high threshold
-        } else if (ballPresentLatched && a < BALL_ALPHA_OFF) {
-            ballPresentLatched = false;  // turn OFF when we drop below the low threshold
+        NormalizedRGBA colors1 = color1.getNormalizedColors();
+        NormalizedRGBA colors2 = color2.getNormalizedColors();
+
+        boolean s1Detected = !Double.isNaN(dist1) && dist1 < GlobalOffsets.colorSensorDist1;
+        boolean s2Detected = !Double.isNaN(dist2) && dist2 < GlobalOffsets.colorSensorDist2;
+
+        if (colors1.alpha == 0) {
+            s1Detected = false;
         }
-
-        return ballPresentLatched;
+        if (colors2.alpha == 0) {
+            s2Detected = false;
+        }
+        return s1Detected || s2Detected;
     }
     private void updateSpindexerPID(double targetAngle, double dt) {
         double ccwOffset = -6.0;
@@ -872,6 +926,7 @@ public class FarRed12Ball extends LinearOpMode {
         double dRaw = (error - lastError) / Math.max(dt, 1e-6);
         dFiltered = dAlpha * dFiltered + (1.0 - dAlpha) * dRaw;
         double d = dFiltered;
+
 
         // PIDF output (interpreted as servo power)
         double out = pidKp * error + pidKi * integral + pidKd * d;
@@ -905,50 +960,6 @@ public class FarRed12Ball extends LinearOpMode {
 
     }
 
-    private void updateHoodPID(double targetAngle, double dt) {
-        // Read hood angle from encoder (0..360)
-        double angle = mapVoltageToAngle360(hoodEncoder.getVoltage(), 0.01, 3.29);
-
-        // Compute shortest signed error [-180,180]
-        double error = -angleError(targetAngle, angle);
-
-        // Integral with anti-windup
-        hoodIntegral += error * dt;
-        hoodIntegral = clamp(hoodIntegral, -hoodIntegralLimit, hoodIntegralLimit);
-
-        // Derivative
-        double d = (error - hoodLastError) / Math.max(dt, 1e-6);
-
-        // PIDF output
-        double out = hoodKp * error + hoodKi * hoodIntegral + hoodKd * d;
-
-        // Feedforward to overcome stiction
-        if (Math.abs(error) > 1.0) {
-            out += hoodKf * Math.signum(error);
-        }
-
-        // Clamp to [-1,1] and apply deadband
-        out = Range.clip(out, -1.0, 1.0);
-        if (Math.abs(out) < hoodOutputDeadband) out = 0.0;
-
-        // If within tolerance, zero output and decay integrator
-        if (Math.abs(error) <= hoodToleranceDeg) {
-            out = 0.0;
-            hoodIntegral *= 0.2;
-        }
-
-        // Apply power to hood servo
-        hood.setPower(out);
-
-        // Store error for next iteration
-        hoodLastError = error;
-
-        // Telemetry
-        telemetry.addData("Hood Target", "%.1f°", targetAngle);
-        telemetry.addData("Hood Actual", "%.1f°", angle);
-        telemetry.addData("Hood Error", "%.1f°", error);
-        telemetry.addData("Hood Power", "%.3f", out);
-    }
     private void updateTurretPID(double targetAngle, double dt) {
         // read angles 0..360
         double angle = mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
@@ -1081,9 +1092,7 @@ public class FarRed12Ball extends LinearOpMode {
 
     private boolean spindexerFull(){
         for(int i=0;i<3;i++){
-            if(savedBalls[i]=='n'){
-                return false;
-            }
+            if(savedBalls[i]=='n') return false;
         }
         return true;
     }

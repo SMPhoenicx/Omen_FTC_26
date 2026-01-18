@@ -42,6 +42,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.FlywheelPIDController;
+import org.firstinspires.ftc.teamcode.GlobalOffsets;
 import org.firstinspires.ftc.teamcode.StateVars;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
@@ -51,7 +52,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-@Autonomous(name="Close Blue 12 Ball Auto", group="Robot")
+@Autonomous(name="Close Blue 12 Ball", group="Robot")
 public class CloseBlue12Ball extends LinearOpMode {
     private ElapsedTime runtime = new ElapsedTime();
     private double timeout = 0;
@@ -59,10 +60,10 @@ public class CloseBlue12Ball extends LinearOpMode {
     //region PEDRO VARS
     private Follower follower;
     private Pose startPose, shoot1, movePoint;
-    private Pose[] pickup1 = new Pose[2];
-    private Pose[] pickup2 = new Pose[2];
+    private Pose[] pickup1 = new Pose[3];
+    private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
-    private Pose[] gatePose = new Pose[2];
+    private Pose[] gatePose = new Pose[3];
     private PathChain scorePath0, scorePath1, scorePath2, scorePath3, moveScore,limelightPath,gatePath, pickupPath1, pickupPath2, pickupPath3;
     //endregion
 
@@ -79,7 +80,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private CRServo spin1 = null;
     private CRServo spin2 = null;
     private Servo led = null;
-    private CRServo hood = null;
+    private Servo hood = null;
     private CRServo turret1 = null;
     private CRServo turret2 = null;
     //TODO temp servo for tuning flywheel pid
@@ -88,7 +89,6 @@ public class CloseBlue12Ball extends LinearOpMode {
     // ENCODERS
     private GoBildaPinpointDriver pinpoint = null;
     private AnalogInput spinEncoder;
-    private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
 
     //COLOR
@@ -139,26 +139,8 @@ public class CloseBlue12Ball extends LinearOpMode {
     //endregion
 
     //region HOOD SYSTEM
-    // Hood PIDF Constants
-    private double hoodKp = 0.0048;
-    private double hoodKi = 0.00014;
-    private double hoodKd = 0.00;
-    private double hoodKf = 0.0;
-
-    // Hood PID State
-    private double hoodIntegral = 0.0;
-    private double hoodLastError = 0.0;
-    private double hoodIntegralLimit = 50.0;
-    private double hoodOutputDeadband = 0.05;
-    private double hoodToleranceDeg = 2.0;
-
-    // Hood Tuning Adjustments
-    private final double hoodKpUp = 0.005;
-    private final double hoodKiUp = 0.00001;
-    private final double hoodKdUp = 0.005;
-
     // Hood Positions
-    private double hoodAngle = -38.1;
+    private double hoodAngle = 138.3;
     private double hoodOffset = 0;
     //endregion
 
@@ -253,10 +235,12 @@ public class CloseBlue12Ball extends LinearOpMode {
         pickup1[1] = new Pose(17.5,84,Math.toRadians(180));
 
         gatePose[0] = new Pose(25.82,77.24,Math.toRadians(90));
-        gatePose[1] = new Pose(14.62,74.21,Math.toRadians(90));//45.5 3
+        gatePose[1] = new Pose(14.62,75.3,Math.toRadians(90));//45.5 3
 
         pickup2[0] = new Pose(63.97,54.52,Math.toRadians(180));
         pickup2[1] = new Pose(10,58.36,Math.toRadians(180));
+        //return from pickup
+        pickup2[2] = new Pose(48.083, 54.73,Math.toRadians(180));
 
         pickup3[0] = new Pose(76.64,30.5,Math.toRadians(180));
         pickup3[1] = new Pose(10,35.58,Math.toRadians(180));
@@ -281,7 +265,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                 .addParametricCallback(0.15,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
-                    pidKp -= 0.0015;
+                    pidKp -= 0.002;
+                    pidKd += 0.0004;
                     })
                 .setTimeoutConstraint(500)
                 .build();
@@ -291,7 +276,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                 .addParametricCallback(0.38,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
-                    pidKp -= 0.0015;
+                    pidKp -= 0.002;
+                    pidKd += 0.0004;
                 })
                 .setTimeoutConstraint(500)
                 .build();
@@ -301,7 +287,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                 .addParametricCallback(0.45,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
-                    pidKp -= 0.0015;
+                    pidKp -= 0.002;
+                    pidKd += 0.0004;
                 })
                 .setTimeoutConstraint(500)
                 .build();
@@ -317,7 +304,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                 .addParametricCallback(0.983,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
-                .addPath(new BezierCurve(pickup2[1],pickup2[0],shoot1))
+                .addPath(new BezierCurve(pickup2[1],pickup2[2],shoot1))
                 .setConstraints(shootConstraints)
                 .setTranslationalConstraint(1.5)
                 .setConstantHeadingInterpolation(shoot1.getHeading())
@@ -377,7 +364,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         spin1 = hardwareMap.get(CRServo.class, "spin1");
         spin2 = hardwareMap.get(CRServo.class, "spin2");
         led = hardwareMap.get(Servo.class,"led");
-        hood = hardwareMap.get(CRServo.class,"hood");
+        hood = hardwareMap.get(Servo.class,"hood");
         turret1 = hardwareMap.get(CRServo.class, "tu1");
         turret2 = hardwareMap.get(CRServo.class, "tu2");
 //        tempServo = hardwareMap.get(Servo.class,"speedometer");
@@ -385,7 +372,6 @@ public class CloseBlue12Ball extends LinearOpMode {
         //ENCODERS
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
-        hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
 
         //COLOR SENSOR
@@ -399,6 +385,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
+        hood.setDirection(Servo.Direction.REVERSE);
 
         // Hubs
         List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
@@ -684,12 +671,12 @@ public class CloseBlue12Ball extends LinearOpMode {
 
             //region HOOD CONTROL
             //(angles must be negative for our direction)
-            updateHoodPID(hoodAngle + hoodOffset, dtSec);
+            hood.setPosition((hoodAngle + hoodOffset)/355.0);
             //endregion
 
             //region SPINDEXER
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle+45, dtSec);
+            updateSpindexerPID(targetAngle+ GlobalOffsets.spindexerOffset, dtSec);
             //endregion
 
             //region SHOOT PREP
@@ -816,8 +803,8 @@ public class CloseBlue12Ball extends LinearOpMode {
 
     //region HELPER METHODS
     private char getRealColor(){
-        char c1 = getDetectedColor(color1);
-        char c2 = getDetectedColor(color2);
+        char c1 = getDetectedColor1(color1);
+        char c2 = getDetectedColor2(color2);
 
         if(c1=='p'||c2=='p'){
             return 'p';
@@ -827,9 +814,32 @@ public class CloseBlue12Ball extends LinearOpMode {
         }
         return 'n';
     }
-    private char getDetectedColor(NormalizedColorSensor sensor){
+
+    private char getDetectedColor1(NormalizedColorSensor sensor){
         double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
-        if (Double.isNaN(dist) || dist > 6.2) {
+        if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist1) {
+            return 'n';
+        }
+
+        NormalizedRGBA colors = sensor.getNormalizedColors();
+        if (colors.alpha == 0) return 'n';
+        float nRed = colors.red/colors.alpha;
+        float nGreen = colors.green/colors.alpha;
+        float nBlue = colors.blue/colors.alpha;
+
+        if(nBlue>nGreen&&nGreen>nRed){//blue green red
+            return 'p';
+        }
+        else if(nGreen>nBlue&&nBlue>nRed&&nGreen>nRed*2){//green blue red
+            return 'g';
+        }
+        return 'n';
+    }
+
+    private char getDetectedColor2(NormalizedColorSensor sensor){
+        double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
+        telemetry.addData("Distance X", dist);
+        if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist2) {
             return 'n';
         }
 
@@ -883,8 +893,8 @@ public class CloseBlue12Ball extends LinearOpMode {
         NormalizedRGBA colors1 = color1.getNormalizedColors();
         NormalizedRGBA colors2 = color2.getNormalizedColors();
 
-        boolean s1Detected = !Double.isNaN(dist1) && dist1 < 5.8;
-        boolean s2Detected = !Double.isNaN(dist2) && dist2 < 6.1;
+        boolean s1Detected = !Double.isNaN(dist1) && dist1 < GlobalOffsets.colorSensorDist1;
+        boolean s2Detected = !Double.isNaN(dist2) && dist2 < GlobalOffsets.colorSensorDist2;
 
         if (colors1.alpha == 0) {
             s1Detected = false;
@@ -958,50 +968,6 @@ public class CloseBlue12Ball extends LinearOpMode {
 
     }
 
-    private void updateHoodPID(double targetAngle, double dt) {
-        // Read hood angle from encoder (0..360)
-        double angle = mapVoltageToAngle360(hoodEncoder.getVoltage(), 0.01, 3.29);
-
-        // Compute shortest signed error [-180,180]
-        double error = -angleError(targetAngle, angle);
-
-        // Integral with anti-windup
-        hoodIntegral += error * dt;
-        hoodIntegral = clamp(hoodIntegral, -hoodIntegralLimit, hoodIntegralLimit);
-
-        // Derivative
-        double d = (error - hoodLastError) / Math.max(dt, 1e-6);
-
-        // PIDF output
-        double out = hoodKp * error + hoodKi * hoodIntegral + hoodKd * d;
-
-        // Feedforward to overcome stiction
-        if (Math.abs(error) > 1.0) {
-            out += hoodKf * Math.signum(error);
-        }
-
-        // Clamp to [-1,1] and apply deadband
-        out = Range.clip(out, -1.0, 1.0);
-        if (Math.abs(out) < hoodOutputDeadband) out = 0.0;
-
-        // If within tolerance, zero output and decay integrator
-        if (Math.abs(error) <= hoodToleranceDeg) {
-            out = 0.0;
-            hoodIntegral *= 0.2;
-        }
-
-        // Apply power to hood servo
-        hood.setPower(out);
-
-        // Store error for next iteration
-        hoodLastError = error;
-
-        // Telemetry
-        telemetry.addData("Hood Target", "%.1f°", targetAngle);
-        telemetry.addData("Hood Actual", "%.1f°", angle);
-        telemetry.addData("Hood Error", "%.1f°", error);
-        telemetry.addData("Hood Power", "%.3f", out);
-    }
     private void updateTurretPID(double targetAngle, double dt) {
         // read angles 0..360
         double angle = mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
