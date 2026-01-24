@@ -223,9 +223,10 @@ public class CloseBlue12Ball extends LinearOpMode {
     // Turret Position
     private double tuPos = 0;
     //endregion
+    //TODO check if lower braking strength works
 
-    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 1.6, 1.5);
-    private final PathConstraints gateConstraints = new PathConstraints(0.99, 100, 1.8, 1.7);
+    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 0.85, 1);
+    private final PathConstraints gateConstraints = new PathConstraints(0.99, 100, 0.9, 1);
 
     public void createPoses(){
         startPose = new Pose(19.9,123.5,Math.toRadians(54));

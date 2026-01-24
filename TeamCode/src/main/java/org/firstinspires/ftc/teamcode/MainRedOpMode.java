@@ -217,7 +217,7 @@ public class MainRedOpMode extends LinearOpMode
     private static final double goalY = 143.0;
     private static final int DESIRED_TAG_ID = 24; //blue=20, red=24
     private static final Pose LOCALIZE_POSE = new Pose(9, 8.9, Math.toRadians(180));
-    Pose endgamePose = new Pose(102, 33, Math.toRadians(90));
+    Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     static final double TAG_X = 129.6;
     static final double TAG_Y = 129.0;
     //endregion
