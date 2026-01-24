@@ -372,7 +372,7 @@ public class FarRed12Ball extends LinearOpMode {
         //DIRECTIONS
         fly1.setDirection(DcMotor.Direction.FORWARD);
         fly2.setDirection(DcMotor.Direction.REVERSE);
-        intake.setDirection(DcMotor.Direction.FORWARD);
+        intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
