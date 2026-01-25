@@ -165,7 +165,7 @@ public class MainBlueOpMode extends LinearOpMode
     private double tuKp = 0.0050;
     private double tuKi = 0.0006;
     private double tuKd = 0.00014;
-    private double tuKf = 0.011;
+    private double tuKf = 0.005;
     private static final double tuKv = 0.00;
 
     private double lastTuTarget = 0.0;
@@ -204,6 +204,8 @@ public class MainBlueOpMode extends LinearOpMode
     private double autoShootTime = 0;
     private boolean autoShot = false;
     private double lastTriggered = 0;
+    boolean isRapidFire = false;
+    double rapidFireStartTime = 0;
     //endregion
 
     //region NAVIGATION & LOCALIZATION
@@ -490,7 +492,7 @@ public class MainBlueOpMode extends LinearOpMode
             boolean present = isBallPresent();
 
             //start detection when spindexer has reached rest position
-            if (lastError < 4 && lastError > -4) {
+            if (Math.abs(lastError) < 12) {
                 setBallAtIndex(spindexerIndex, detectedColor, present);
             }
 
@@ -555,8 +557,19 @@ public class MainBlueOpMode extends LinearOpMode
             if (gamepad2.dpadDownWasPressed()) {
                 hoodOffset += 5;
             }
+
+            double recoilOffset = 0.0;
+
+            double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
+
+            if ((flyOn && isRapidFire) && (flyDiff > 5) && (flyDiff < 70)) {
+                recoilOffset = flyDiff * 0.65;
+            }
+
+            double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
+
             // Update Hood PID
-            hood.setPosition((hoodAngle + hoodOffset)/355.0);
+            hood.setPosition((finalHoodAngle)/355.0);
             //endregion
 
             //region INTAKE CONTROL
@@ -589,13 +602,27 @@ public class MainBlueOpMode extends LinearOpMode
             if (spindexerOverride && runtime.milliseconds() - overrideTime > 1000) {
                 spindexerOverride = false;
             }
-            //intake positions are the even ones
+
+            //Rapid Fire stuff
             if (gamepad1.dpadUpWasPressed()) {
-                autoShot = true;
-                autoShootNum = 3;
+                isRapidFire = true;
+                rapidFireStartTime = runtime.milliseconds();
                 tranOn = true;
             }
-            //TODO check if works
+
+            if (isRapidFire) {
+                boolean timeUp = (runtime.milliseconds() - rapidFireStartTime > 1200);
+
+                if (timeUp || intakeOn || spindexerOverride) {
+                    isRapidFire = false;
+                    tranOn = false;
+                    Arrays.fill(savedBalls, 'n');
+                    Arrays.fill(presentBalls, false);
+                    calculateNearestIndex();
+                }
+            }
+
+            //Pattern sorting
             if (gamepad1.dpadDownWasPressed()) {
                 tranOn = false;
                 int greenIn=-1;
@@ -630,23 +657,6 @@ public class MainBlueOpMode extends LinearOpMode
             }
             //endregion
 
-            //reset all when autoshot
-            if (autoShootNum == 1) {
-                Arrays.fill(savedBalls, 'n');
-                Arrays.fill(presentBalls, false);
-            }
-
-            //shoot all 3 balls with 270 ms delay between each. Aim to optimize and reduce time. might be mech thing tho
-            if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 270)) {
-                spinClock();
-                autoShootNum--;
-                autoShootTime = runtime.milliseconds();
-            }
-
-            if (autoShootNum <= 0) {
-                autoShot = false;
-            }
-
             //spin to empty slot while intaking.
             if (intakeOn && !spindexerOverride) {
                 int currentSlot = -1;
@@ -665,10 +675,15 @@ public class MainBlueOpMode extends LinearOpMode
                     }
                 }
             }
+            if (isRapidFire) {
+                spin1.setPower(0.93);
+                spin2.setPower(0.93);
 
-            double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle + GlobalOffsets.spindexerOffset, dtSec);
-            //endregion
+            } else {
+                double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
+                updateSpindexerPID(targetAngle + GlobalOffsets.spindexerOffset, dtSec);
+            }
+           //endregion
 
             //region GOAL TRACKING
             if (trackingOn) {
@@ -770,13 +785,7 @@ public class MainBlueOpMode extends LinearOpMode
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.addData("last position", StateVars.lastPose);
-            telemetry.addData("FW cmdVel", "%.0f", flywheel.commandedVelocity);
-            telemetry.addData("FW measVel", "%.0f", flywheel.lastMeasuredVelocity);
-            telemetry.addData("FW power", "%.3f", fly1.getPower());
-            telemetry.addData("FW voltage", "%.2f", flywheel.voltageFiltered);
             telemetry.addData("pidKf", "%.7f", tuKf);
-            telemetry.addData("Vision Corr (deg)", "%.2f", visionCorrectionDeg);
-            telemetry.addData("Tag Bearing", targetFound ? desiredTag.ftcPose.bearing : 0);
 
             telemetry.update();
         }
@@ -886,6 +895,40 @@ public class MainBlueOpMode extends LinearOpMode
         spin2.setPower(out);
 
         lastError = finalError;
+        telemetry.addData("LAST ERROR", lastError);
+    }
+
+    public void calculateNearestIndex() {
+        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
+
+        int bestIndex = spindexerIndex;
+        double minAbsError = 360.0;
+
+        for (int i = 0; i < SPINDEXER_POSITIONS.length; i++) {
+            double baseTarget = SPINDEXER_POSITIONS[i] + GlobalOffsets.spindexerOffset;
+
+            // 1. Check the Normal Target
+            double errorNormal = Math.abs(angleError(baseTarget, currentAngle));
+
+            // 2. Check the "Ghost" Target (180 degrees away)
+            // Since gearing is 1:2, this is the same physical position
+            double ghostTarget = baseTarget + 180.0;
+            double errorGhost = Math.abs(angleError(ghostTarget, currentAngle));
+
+            // Find which one is closer
+            double localMinError = Math.min(errorNormal, errorGhost);
+
+            // Compare against the global best found so far
+            if (localMinError < minAbsError) {
+                minAbsError = localMinError;
+                bestIndex = i;
+            }
+        }
+
+        // Update the index.
+        // The PID loop will automatically handle choosing between
+        // the Normal or Ghost target again in the next frame.
+        spindexerIndex = bestIndex;
     }
     //endregion
 
@@ -954,7 +997,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     private char getDetectedColor2(NormalizedColorSensor sensor){
         double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
-        telemetry.addData("Distance X", dist);
+        telemetry.addData("Distance Y", dist);
         if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist2) {
             return 'n';
         }

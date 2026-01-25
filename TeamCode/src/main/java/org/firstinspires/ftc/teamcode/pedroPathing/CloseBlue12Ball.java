@@ -176,31 +176,9 @@ public class CloseBlue12Ball extends LinearOpMode {
 
     private boolean spindexerPidArmed = false;
 
-    //endregion
     boolean intakeOn = false;
 
-    // Auto-intake State Machine
-    private enum SpindexerState {
-        IDLE,
-        FIND_EMPTY_SLOT,
-        ROTATE_TO_SLOT,
-        WAIT_FOR_SETTLE,
-        WAIT_FOR_BALL
-    }
 
-    private SpindexerState spState = SpindexerState.IDLE;
-    private int currentSlot = -1;
-    private long settleStartMs = 0;
-
-    // Ball detection thresholds
-    private static final float BALL_ALPHA_ON  = 0.20f;
-    private static final float BALL_ALPHA_OFF = 0.13f;
-
-    private boolean ballPresentLatched = false;
-
-    // Runtime Spindexer Vars
-    private double spindexerAngleDeg = 0.0;
-    private double spindexerErrorDeg = 0.0;
     private double spindexerOutput = 0.0;
     private boolean spindexerAtTarget = false;
     private double lastColorRead = 0;
@@ -227,10 +205,8 @@ public class CloseBlue12Ball extends LinearOpMode {
     // Turret Position
     private double tuPos = 0;
     //endregion
-    //TODO check if lower braking strength works
-
-    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 1, 1);
-    private final PathConstraints gateConstraints = new PathConstraints(0.99, 100, 1, 1);
+    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 0.75, 0.8);
+    private final PathConstraints gateConstraints = new PathConstraints(0.99, 100, 0.9, 1);
 
     public void createPoses(){
         startPose = new Pose(19.9,123.5,Math.toRadians(54));
@@ -478,7 +454,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -76;
+                            tuPos = -78;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -501,7 +477,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(gatePath,false);
-                            tuPos = -76;
+                            tuPos = -78;
                             gateCutoff = true;
 
                             timeout = runtime.milliseconds()+1400;

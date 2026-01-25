@@ -128,16 +128,17 @@ public class MainRedOpMode extends LinearOpMode
 
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
-    private double pidKp = 0.0065;
-    private double pidKi = 0.00057;
-    private double pidKd = 0.00043;
-    private double pidKf = 0.000;
+    private double pidKp = 0.006;
+    private double pidKi = 0.0;
+    private double pidKd = 0.000425;
+    private double pidKf = 0.001;
 
     // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 500.0;
+    private double integralLimit = 300.0;
     private double pidLastTimeMs = 0.0;
+    private double lastFilteredD = 0.0;
 
     // Spindexer Control Parameters
     private final double positionToleranceDeg = 2.0;
@@ -146,7 +147,7 @@ public class MainRedOpMode extends LinearOpMode
     private double overrideTime = 0.0;
 
     // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {112.5-13, 172.5-13, 232.5-13, 292.5-13, 352.5-13, 52.50-13};
+    private final double[] SPINDEXER_POSITIONS = {49.75, 79.75, 109.75, 139.75, 169.75, 19.75};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
     private int greenPos = 0;
@@ -154,6 +155,9 @@ public class MainRedOpMode extends LinearOpMode
     // Ball Storage Tracking
     private char[] savedBalls = {'n', 'n', 'n'};
     private boolean[] presentBalls = {false, false, false};
+
+    private boolean spindexerPidArmed = false;
+
     //endregion
 
     //region TURRET SYSTEM
@@ -161,7 +165,7 @@ public class MainRedOpMode extends LinearOpMode
     private double tuKp = 0.0050;
     private double tuKi = 0.0006;
     private double tuKd = 0.00014;
-    private double tuKf = 0.0;
+    private double tuKf = 0.011;
     private static final double tuKv = 0.00;
 
     private double lastTuTarget = 0.0;
@@ -189,7 +193,7 @@ public class MainRedOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1026, 1059, 1085, 1131, 1147, 1157, 1162, 1223, 1251, 1261, 1267, 1256, 1283, 1297, 1370, 1393, 1420};
+    private static final double[] FLY_SPEEDS =          {1005, 1026, 1059, 1083, 1129, 1143, 1155, 1162, 1219, 1251, 1261, 1267, 1256, 1283, 1297, 1370, 1393, 1420};
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
     private static final double ALPHA = 0.8;
@@ -291,7 +295,7 @@ public class MainRedOpMode extends LinearOpMode
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
         fly1.setDirection(DcMotor.Direction.FORWARD);
         fly2.setDirection(DcMotor.Direction.REVERSE);
-        intake.setDirection(DcMotor.Direction.FORWARD);
+        intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
@@ -430,7 +434,7 @@ public class MainRedOpMode extends LinearOpMode
                     //    This amplifies correction if robot is far from the diagonal.
                     double signedDist = (rx + ry) - 144.0; // >0 means y > 144 - x (your "right" side)
                     double maxDistForScale = 120.0; // max expected magnitude (tune)
-                    double kScale = 0.6; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
+                    double kScale = 0.5; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
                     double lateralScale = 1.0 + kScale * (Math.max(-maxDistForScale, Math.min(maxDistForScale, signedDist)) / maxDistForScale);
                     // Clamp so scale stays reasonable:
                     lateralScale = Math.max(0.5, Math.min(2.0, lateralScale));
@@ -725,6 +729,12 @@ public class MainRedOpMode extends LinearOpMode
             } else if (trackingOn) {
                 double dTarget = normalizeDeg180(safeTurretTargetDeg - lastTuTarget);
                 targetVelDegPerSec = dTarget / Math.max(dtSec, 1e-3);
+                if (voltage >= 12.8) {
+                    targetVelDegPerSec += -turnInput * 300;
+                }
+                if (voltage < 12.8) {
+                    targetVelDegPerSec += -turnInput * 260;
+                }
                 lastTuTarget = safeTurretTargetDeg;
             } else {
                 // no FF when not tracking
@@ -746,16 +756,16 @@ public class MainRedOpMode extends LinearOpMode
                 moveRobot(drive, strafe, turn);
             }
 
-            if (gamepad1.right_trigger > 0.5) { //&& runtime.milliseconds() - lastTriggered > 150) {
-//                flywheel.Ki += 0.00005;
-//                lastTriggered = runtime.milliseconds();
-                flyHoodLock = !flyHoodLock;
+            if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
+                tuKf += 0.002;
+                lastTriggered = runtime.milliseconds();
+//                flyHoodLock = !flyHoodLock;
             }
-//            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
-//                flywheel.Ki -= 0.00005;
-//                lastTriggered = runtime.milliseconds();
-//                //flyHoodLock = !flyHoodLock;
-//            }
+            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
+                tuKf -= 0.002;
+                lastTriggered = runtime.milliseconds();
+                //flyHoodLock = !flyHoodLock;
+            }
             //endregion
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
@@ -764,7 +774,7 @@ public class MainRedOpMode extends LinearOpMode
             telemetry.addData("FW measVel", "%.0f", flywheel.lastMeasuredVelocity);
             telemetry.addData("FW power", "%.3f", fly1.getPower());
             telemetry.addData("FW voltage", "%.2f", flywheel.voltageFiltered);
-            telemetry.addData("FW Ki", "%.7f", flywheel.Ki);
+            telemetry.addData("pidKf", "%.7f", tuKf);
             telemetry.addData("Vision Corr (deg)", "%.2f", visionCorrectionDeg);
             telemetry.addData("Tag Bearing", targetFound ? desiredTag.ftcPose.bearing : 0);
 
@@ -813,57 +823,69 @@ public class MainRedOpMode extends LinearOpMode
         spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
         spinBallLED();
     }
-    private void updateSpindexerPID(double targetAngle, double dt) {
-        double ccwOffset = -6.0;
-        // read angles 0..360
-        double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
-
-        //raw error
-        double rawError = -angleError(targetAngle, angle);
-
-        //adds a constant term if it's in a certain direction.
-        // we either do this or we change the pid values for each direction.
-        // gonna try and see if simpler method works tho
-        double compensatedTarget = targetAngle;
-        if (rawError < 0) { // moving CCW
-            compensatedTarget = (targetAngle + ccwOffset) % 360.0;
+    private void updateSpindexerPID(double targetBaseAngle, double dt) {
+        if (!spindexerPidArmed) {
+            lastError = 0;
+            lastFilteredD = 0;
+            integral = 0;
+            spin1.setPower(0);
+            spin2.setPower(0);
+            spindexerPidArmed = true;
+            return;
         }
-        // compute shortest signed error [-180,180]
-        double error = -angleError(compensatedTarget, angle);
+        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
 
-        // integral with anti-windup
-        integral += error * dt;
-        integral = clamp(integral, -integralLimit, integralLimit);
+        // 1. Twin Target Logic
+        double targetB = (targetBaseAngle + 180.0) % 360.0;
 
-        // derivative
-        double d = (error - lastError) / Math.max(dt, 1e-6);
+        double errorA = -angleError(targetBaseAngle, currentAngle);
+        double errorB = -angleError(targetB, currentAngle);
 
-        // PIDF output (interpreted as servo power)
-        double out = pidKp * error + pidKi * integral + pidKd * d;
+        double finalError = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
 
-        // small directional feedforward to overcome stiction when error significant
-        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
+        // 2. Integral Zone (Prevents windup, fixes "stopping short")
+        if (Math.abs(finalError) < 10.0) { // Only accumulate when close
+            integral += finalError * dt;
+        } else {
+            integral = 0;
+        }
+        integral = Range.clip(integral, -integralLimit, integralLimit);
 
-        // clamp to [-1,1] and apply deadband
+        // 3. Filtered Derivative (The Jitter Fixer)
+        double rawD = (finalError - lastError) / Math.max(dt, 1e-6);
+        // Low-pass filter: 80% old value, 20% new value.
+        // This smooths out the analog encoder "flicker".
+        double filteredD = (lastFilteredD * 0.8) + (rawD * 0.2);
+        lastFilteredD = filteredD;
+
+        // 4. Calculate PID Output
+        double pOut = pidKp * finalError;
+        double iOut = pidKi * integral;
+        double dOut = pidKd * filteredD;
+
+        // 5. Static Feedforward (The Friction Killer)
+        // Applies a constant "kick" to break friction whenever we aren't at the target
+        double fOut = 0;
+        if (Math.abs(finalError) > positionToleranceDeg) {
+            fOut = Math.signum(finalError) * pidKf;
+        }
+
+        double out = pOut + iOut + dOut + fOut;
+
+        // 6. Output Management
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < outputDeadband) out = 0.0;
 
-        // if within tolerance, zero outputs and decay integrator to avoid bumping
-        if (Math.abs(error) <= positionToleranceDeg) {
+        // Stop and decay integral when inside tolerance
+        if (Math.abs(finalError) <= positionToleranceDeg) {
             out = 0.0;
             integral *= 0.2;
         }
 
-        // apply powers (flip one if your servo is mirrored - change sign if needed)
         spin1.setPower(out);
         spin2.setPower(out);
 
-        // store errors for next derivative calculation
-        lastError = error;
-
-        // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
-
+        lastError = finalError;
     }
     //endregion
 
