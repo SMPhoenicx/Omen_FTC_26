@@ -653,14 +653,13 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     if(spindexerFull()){
                         intake.setPower(0);
                     }
-                    if(pathState!=2||!shutoffIntake){
+                    if(!shutoffIntake){
                         follower.breakFollowing();
+                        subState++;
                     }
                     intakeOn = false;
                     shutoffIntake = false;
                     pidKp += 0.0015;
-
-                    subState++;
                 }
             }
 //            else{
