@@ -59,7 +59,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 
     //region PEDRO VARS
     private Follower follower;
-    private Pose startPose, shoot1, movePoint;
+    private Pose startPose, shoot1, shoot3, movePoint;
     private Pose[] pickup1 = new Pose[3];
     private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
@@ -91,7 +91,6 @@ public class CloseBlue12BallPartner extends LinearOpMode {
     // ENCODERS
     private GoBildaPinpointDriver pinpoint = null;
     private AnalogInput spinEncoder;
-    private AnalogInput hoodEncoder;
     private AnalogInput turretEncoder;
 
     //COLOR
@@ -148,62 +147,39 @@ public class CloseBlue12BallPartner extends LinearOpMode {
     //endregion
 
     //region SPINDEXER SYSTEM
-    // PIDF Constants
-    private double pidKp = 0.0052;
+    // Spindexer PIDF Constants
+    private double pidKp = 0.006;
     private double pidKi = 0.0;
-    private double pidKd = 0.0009;
-    private double pidKf = 0.007;
+    private double pidKd = 0.000425;
+    private double pidKf = 0.001;
 
-    // PID State
+    // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 500.0;
+    private double integralLimit = 300.0;
     private double pidLastTimeMs = 0.0;
+    private double lastFilteredD = 0.0;
 
-
-    private double dFiltered = 0.0;
-    private double dAlpha = 0.86;
-
-    // Control Parameters
+    // Spindexer Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
+    private boolean spindexerOverride = false;
+    private double overrideTime = 0.0;
 
-    // Position Presets (6 slots)
-    private final double[] SPINDEXER_POSITIONS = {12, 42, 72, 102, 132, 342};
-//    private final double[] SPINDEXER_POSITIONS = {112.5, 142.5, 172.5, 202.5, 232.5, 262.5};
+    // Spindexer Positions
+    private final double[] SPINDEXER_POSITIONS = {49.75, 79.75, 109.75, 139.75, 169.75, 19.75};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
+    private int greenPos = 0;
 
-    // Ball Storage Tracking ('n','p','g')
+    // Ball Storage Tracking
     private char[] savedBalls = {'g', 'p', 'p'};
-    int greenPos=0;
+    private boolean[] presentBalls = {false, false, false};
+
+    private boolean spindexerPidArmed = false;
     boolean intakeOn = false;
-
-    // Auto-intake State Machine
-    private enum SpindexerState {
-        IDLE,
-        FIND_EMPTY_SLOT,
-        ROTATE_TO_SLOT,
-        WAIT_FOR_SETTLE,
-        WAIT_FOR_BALL
-    }
-
-    private SpindexerState spState = SpindexerState.IDLE;
-    private int currentSlot = -1;
-    private long settleStartMs = 0;
-
-    // Ball detection thresholds
-    private static final float BALL_ALPHA_ON  = 0.20f;
-    private static final float BALL_ALPHA_OFF = 0.13f;
-
-    private boolean ballPresentLatched = false;
-
-    // Runtime Spindexer Vars
-    private double spindexerAngleDeg = 0.0;
-    private double spindexerErrorDeg = 0.0;
     private double spindexerOutput = 0.0;
     private boolean spindexerAtTarget = false;
-    private double lastColorRead = 0;
     //endregion
 
     //region TURRET SYSTEM
@@ -238,18 +214,19 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         pickup1[1] = new Pose(10,58.36,Math.toRadians(180));
         pickup1[2] = new Pose(48.083, 54.73,Math.toRadians(180));
 
-        pickup2[0] = new Pose(39.06642541436464,45.71342541436463,Math.toRadians(180));
-        pickup2[1] = new Pose(12.0639,63.8306,Math.toRadians(149.988892));
-        junoPose[0] = new Pose(16.940789779005527,57.208117679558015,Math.toRadians(149.988892));
-        junoPose[1] = new Pose(9.375690607734814,54.58563535911603,Math.toRadians(149.988892));
-        junoPose[2] = new Pose(15.041436464088406,58.30110497237569,Math.toRadians(180));
-        junoPose[3] = new Pose(9.613259668508295,60.259668508287305,Math.toRadians(180));
+        pickup2[0] = new Pose(39.06642541436464,50.75209944751381,Math.toRadians(180));
+        pickup2[1] = new Pose(18.632960773480665,64.68695359116022,Math.toRadians(149.988892));
+        junoPose[0] = new Pose(23.040237292817686,56.942924309392275,Math.toRadians(149.988892));
+        junoPose[1] = new Pose(14.11878453038675,53.790055248618806,Math.toRadians(149.988892));
+        junoPose[2] = new Pose(24.649171270718252,59.09668508287294,Math.toRadians(180));
+        junoPose[3] = new Pose(14.121546961325976,61.6767955801105,Math.toRadians(180));
         pickup2[2] = new Pose(48.55110497237568,45.52872928176797,Math.toRadians(180));
 
         pickup3[0] = new Pose(46.44,81.52,Math.toRadians(180));
         pickup3[1] = new Pose(17.5,84,Math.toRadians(180));
 
         shoot1 = new Pose(57.5,98.4,Math.toRadians(180));
+        shoot3 = new Pose(61.32044198895028,116.9171270718232,Math.toRadians(180));
         movePoint = new Pose(31,69.6,Math.toRadians(90));
     }
 
@@ -282,17 +259,19 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     intakeOn = true;
                     pidKp -= 0.0015;
                 })
-                .setTimeoutConstraint(500)
+                .setTimeoutConstraint(1000)
                 .build();
         junoPath[0] = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup2[1],junoPose[0],junoPose[1]))
                 .setLinearHeadingInterpolation(pickup2[1].getHeading(),junoPose[1].getHeading())
-                .setTimeoutConstraint(500)
+//                .addTemporalCallback(5000,()-> {follower.breakFollowing();})
+//                .setTimeoutConstraint(500)
                 .build();
         junoPath[1] = follower.pathBuilder()
                 .addPath(new BezierCurve(junoPose[1],junoPose[2],junoPose[3]))
                 .setLinearHeadingInterpolation(junoPose[1].getHeading(),junoPose[3].getHeading())
-                .setTimeoutConstraint(500)
+//                .addTemporalCallback(5000,()-> {follower.breakFollowing();})
+//                .setTimeoutConstraint(500)
                 .build();
         pickupPath3 = follower.pathBuilder()//first intake
                 .addPath(new BezierCurve(shoot1,pickup3[0],pickup3[1]))
@@ -320,9 +299,9 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                 .addParametricCallback(0.986,()-> shootReady=true)
                 .build();
         scorePath3 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup3[1],shoot1))
+                .addPath(new BezierLine(pickup3[1],shoot3))
                 .setConstraints(shootConstraints)
-                .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot1.getHeading())
+                .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot3.getHeading())
                 .addParametricCallback(0.983,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
@@ -342,8 +321,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1110;
-        int shoot0change = -12;
+        int flySpeed = 1120;
+        int shoot0change = 0;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -377,7 +356,6 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         //ENCODERS
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         spinEncoder = hardwareMap.get(AnalogInput.class, "espin1");
-        hoodEncoder = hardwareMap.get(AnalogInput.class, "hooden");
         turretEncoder = hardwareMap.get(AnalogInput.class, "tuen");
 
         //COLOR SENSOR
@@ -391,6 +369,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
         spin2.setDirection(CRServo.Direction.FORWARD);
+        hood.setDirection(Servo.Direction.REVERSE);
 
         // Hubs
         List<LynxModule> allHubs = hardwareMap.getAll(LynxModule.class);
@@ -464,9 +443,6 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             Pose robotPose = follower.getPose();
             //endregion
 
-            if (runtime.milliseconds() > 27000) {
-                pathState = 4;
-            }
             //region PATH STUFF
             if(!follower.isBusy()&&runtime.milliseconds()>timeout){
                 switch(pathState){
@@ -527,7 +503,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                         }
                         else if(subState==2){
                             follower.followPath(junoPath[1],true);
-                            follower.setMaxPower(0.9);
+//                            follower.setMaxPower(0.9);
 
                             subState++;
                         }
@@ -536,7 +512,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                             shutoffIntake = true;
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
-                            tuPos += 3;
+//                            tuPos += 3;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -550,6 +526,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     case 3:
                         if(subState==0){
                             follower.followPath(pickupPath3,false);
+                            tuPos = -30;
+                            flySpeed = 1095;
 
                             subState++;
                         }
@@ -558,7 +536,6 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                             timeout = runtime.milliseconds() + 500;
                             follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
-                            tuPos += 2;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -570,12 +547,13 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 
                     case 4:
 //                        transOn=false;
-                        //TODO Check if this works
                         PathChain tempPath = follower.pathBuilder()
                                 .addPath(new BezierLine(follower.getPose(),movePoint))
                                 .setLinearHeadingInterpolation(follower.getPose().getHeading(), movePoint.getHeading())
                                 .build();
-                        follower.followPath(tempPath);
+                        if(runtime.milliseconds()<25000){
+                            follower.followPath(tempPath);
+                        }
                         pathState++;
 //                        flySpeed=0;
                         running=false;
@@ -675,14 +653,13 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     if(spindexerFull()){
                         intake.setPower(0);
                     }
-                    if(pathState==2){
+                    if(!shutoffIntake){
                         follower.breakFollowing();
+                        subState++;
                     }
                     intakeOn = false;
                     shutoffIntake = false;
                     pidKp += 0.0015;
-
-                    subState++;
                 }
             }
 //            else{
@@ -762,7 +739,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
-                    if (pathState != 2 || runtime.milliseconds() > 20000) {
+                    if (pathState != 2 || runtime.milliseconds() > 19500) {
                         pathState++;
                     }
                 }
@@ -927,68 +904,73 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         }
         return s1Detected || s2Detected;
     }
-    private void updateSpindexerPID(double targetAngle, double dt) {
-        double ccwOffset = -6.0;
-        // read angles 0..360
-        double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
-
-        //raw error
-        double rawError = -angleError(targetAngle, angle);
-
-        //adds a constant term if it's in a certain direction.
-        // we either do this or we change the pid values for each direction.
-        // gonna try and see if simpler method works tho
-        double compensatedTarget = targetAngle;
-        if (rawError < 0) { // moving CCW
-            compensatedTarget = (targetAngle + ccwOffset) % 360.0;
+    private void updateSpindexerPID(double targetBaseAngle, double dt) {
+        if (!spindexerPidArmed) {
+            lastError = 0;
+            lastFilteredD = 0;
+            integral = 0;
+            spin1.setPower(0);
+            spin2.setPower(0);
+            spindexerPidArmed = true;
+            return;
         }
-        // compute shortest signed error [-180,180]
-        double error = -angleError(compensatedTarget, angle);
+        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
 
-        //store for outside use
-        spindexerAngleDeg = angle;
-        spindexerErrorDeg = error;
+        // 1. Twin Target Logic
+        double targetB = (targetBaseAngle + 180.0) % 360.0;
 
-        // integral with anti-windup
-        integral += error * dt;
-        integral = clamp(integral, -integralLimit, integralLimit);
+        double errorA = -angleError(targetBaseAngle, currentAngle);
+        double errorB = -angleError(targetB, currentAngle);
 
-        // derivative
-        double dRaw = (error - lastError) / Math.max(dt, 1e-6);
-        dFiltered = dAlpha * dFiltered + (1.0 - dAlpha) * dRaw;
-        double d = dFiltered;
+        double finalError = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
 
+        // 2. Integral Zone (Prevents windup, fixes "stopping short")
+        if (Math.abs(finalError) < 10.0) { // Only accumulate when close
+            integral += finalError * dt;
+        } else {
+            integral = 0;
+        }
+        integral = Range.clip(integral, -integralLimit, integralLimit);
 
-        // PIDF output (interpreted as servo power)
-        double out = pidKp * error + pidKi * integral + pidKd * d;
+        // 3. Filtered Derivative (The Jitter Fixer)
+        double rawD = (finalError - lastError) / Math.max(dt, 1e-6);
+        // Low-pass filter: 80% old value, 20% new value.
+        // This smooths out the analog encoder "flicker".
+        double filteredD = (lastFilteredD * 0.8) + (rawD * 0.2);
+        lastFilteredD = filteredD;
 
-        // small directional feedforward to overcome stiction when error significant
-        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
+        // 4. Calculate PID Output
+        double pOut = pidKp * finalError;
+        double iOut = pidKi * integral;
+        double dOut = pidKd * filteredD;
 
-        // clamp to [-1,1] and apply deadband
+        // 5. Static Feedforward (The Friction Killer)
+        // Applies a constant "kick" to break friction whenever we aren't at the target
+        double fOut = 0;
+        if (Math.abs(finalError) > positionToleranceDeg) {
+            fOut = Math.signum(finalError) * pidKf;
+        }
+
+        double out = pOut + iOut + dOut + fOut;
+
+        // 6. Output Management
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < outputDeadband) out = 0.0;
 
-        // if within tolerance, zero outputs and decay integrator to avoid bumping
-        if (Math.abs(error) <= positionToleranceDeg) {
+        // Stop and decay integral when inside tolerance
+        if (Math.abs(finalError) <= positionToleranceDeg) {
             out = 0.0;
             integral *= 0.2;
         }
 
         //store for outside use
         spindexerOutput = out;
-        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+10);
+        spindexerAtTarget = (Math.abs(finalError) <= positionToleranceDeg+10);
 
-        // apply powers (flip one if your servo is mirrored - change sign if needed)
         spin1.setPower(out);
         spin2.setPower(out);
 
-        // store errors for next derivative calculation
-        lastError = error;
-
-        // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
-
+        lastError = finalError;
     }
     private void updateTurretPID(double targetAngle, double dt) {
         // read angles 0..360
