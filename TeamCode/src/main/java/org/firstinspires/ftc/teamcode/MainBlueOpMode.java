@@ -131,7 +131,7 @@ public class MainBlueOpMode extends LinearOpMode
     private double pidKp = 0.006;
     private double pidKi = 0.0;
     private double pidKd = 0.000425;
-    private double pidKf = 0.001;
+    private double pidKf = 0.006;
 
     // Spindexer PID State
     private double integral = 0.0;
@@ -536,13 +536,16 @@ public class MainBlueOpMode extends LinearOpMode
             flyAtSpeed = Math.abs(flyTargetTicksPerSec - flywheel.lastMeasuredVelocity) < 50;
 
             // update LED & rumble
-            if (!flyOn) {
+            if (intakeOn && !hasEmptySlot()) {
+                led.setPosition(0.6);
+            }
+            else if (!flyOn) {
                 led.setPosition(1); // white
             } else if (flyAtSpeed) {
                 if (prevflyState != flyAtSpeed) {
                     gamepad1.rumble(300);
                 }
-                led.setPosition(0.5); // blue
+                led.setPosition(0.5); // green
             } else {
                 led.setPosition(0.3); // red
             }
@@ -563,7 +566,7 @@ public class MainBlueOpMode extends LinearOpMode
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
             if ((flyOn && isRapidFire) && (flyDiff > 5) && (flyDiff < 70)) {
-                recoilOffset = flyDiff * 0.65;
+                recoilOffset = flyDiff * 0.9;
             }
 
             double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);

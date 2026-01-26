@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
 public class GlobalOffsets {
-    public static double spindexerOffset = -35;
+    public static double spindexerOffset = -32;
     public static double colorSensorDist1 = 3.3;
     public static double colorSensorDist2 = 4.6;
     public static double[] globalHoodAngles = {
