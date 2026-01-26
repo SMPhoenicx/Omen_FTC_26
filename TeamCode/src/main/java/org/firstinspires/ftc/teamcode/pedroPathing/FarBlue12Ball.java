@@ -312,7 +312,7 @@ public class FarBlue12Ball extends LinearOpMode {
         int shootingState = 0;
         boolean running = true;
         int flySpeed = 1380;
-        int shoot0change = -57;
+        int shoot0change = -95;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -443,8 +443,9 @@ public class FarBlue12Ball extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(scorePath0,true);
                             motifOn = true;
+                            flywheel.Kp += 0.0004;
 
-                            timeout = runtime.milliseconds()+650;
+                            timeout = runtime.milliseconds()+3000;
                             subState++;
                         }
                         //READ MOTIF is subState 1
@@ -463,6 +464,7 @@ public class FarBlue12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
+                            flywheel.Kp -= 0.0005;
 
                             flySpeed += shoot0change;
                             subState++;
