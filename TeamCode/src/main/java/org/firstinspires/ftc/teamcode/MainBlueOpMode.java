@@ -565,8 +565,8 @@ public class MainBlueOpMode extends LinearOpMode
 
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
-            if ((flyOn && isRapidFire) && (flyDiff > 5) && (flyDiff < 70)) {
-                recoilOffset = flyDiff * 0.9;
+            if ((flyOn && isRapidFire) && (Math.abs(flyDiff) > 10) && (Math.abs(flyDiff) < 50)) {
+                recoilOffset = flyDiff*1.2;
             }
 
             double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
