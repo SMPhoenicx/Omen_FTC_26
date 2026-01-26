@@ -247,7 +247,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                 .addParametricCallback(0.38,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
-                    pidKd += 0.0004;
+//                    pidKd += 0.0004;
                 })
                 .setTimeoutConstraint(500)
                 .build();
@@ -278,7 +278,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                 .addParametricCallback(0.15,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
-                    pidKd += 0.0004;
+//                    pidKd += 0.0004;
                 })
                 .setTimeoutConstraint(500)
                 .build();
@@ -319,7 +319,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1120;
+        int flySpeed = 1140;
         int shoot0change = 0;
         double spindexerSavedPos = 0;
 
@@ -492,23 +492,29 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(pickupPath2,true);
 
-                            timeout = runtime.milliseconds() + 700;
                             subState++;
                         }
                         else if(subState==1){
+                            timeout = runtime.milliseconds() + 300;
+                            subState++;
+                        }
+                        else if(subState==2){
                             follower.followPath(junoPath[0],true);
 
                             subState++;
                         }
-                        else if(subState==2){
+                        else if(subState==3){
                             follower.followPath(junoPath[1],true);
-                            follower.setMaxPower(0.8);
+//                            follower.setMaxPower(0.8);
 
-                            timeout = runtime.milliseconds() + 400;
                             subState++;
                         }
-                        //INTAKE is subState 0-2
-                        else if(subState==3){
+                        else if(subState==4){
+                            timeout = runtime.milliseconds() + 150;
+                            subState++;
+                        }
+                        //INTAKE is subState 0-4
+                        else if(subState==5){
                             shutoffIntake = true;
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
@@ -526,8 +532,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     case 3:
                         if(subState==0){
                             follower.followPath(pickupPath3,false);
-                            tuPos = -30;
-                            flySpeed = 1095;
+                            tuPos = -35;
+                            flySpeed = 1110;//1095;
 
                             subState++;
                         }
@@ -653,9 +659,12 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     if(spindexerFull()){
                         intake.setPower(0);
                     }
-                    if(!shutoffIntake){
+                    if(pathState!=2){
                         follower.breakFollowing();
                         subState++;
+                    }else if(!shutoffIntake){
+                        follower.breakFollowing();
+                        subState = 5;
                     }
                     intakeOn = false;
                     shutoffIntake = false;
@@ -714,12 +723,12 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
                 if(shootingState==1){
                     transOn = true;
-                    if(turretAtTarget){
+//                    if(turretAtTarget){
                         spinClock();
 
                         timeout=runtime.milliseconds()+300;
                         shootingState++;
-                    }
+//                    }
                 }
                 else if(shootingState==2){
                     spinClock();
@@ -738,7 +747,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
-                    if (pathState != 2 || runtime.milliseconds() > 19500) {
+                    if (pathState != 2 || runtime.milliseconds() > 17500) {//previously 19500
                         pathState++;
                     }
                 }
@@ -788,6 +797,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             telemetry.addData("path state", pathState);
             telemetry.addData("sub state",subState);
             telemetry.addData("shooting state",shootingState);
+            telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
             telemetry.addData("x", follower.getPose().getX());
             telemetry.addData("y", follower.getPose().getY());
             telemetry.addData("heading", follower.getPose().getHeading());
