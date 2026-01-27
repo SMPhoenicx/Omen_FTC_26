@@ -140,63 +140,45 @@ public class FarRed12Ball extends LinearOpMode {
     //region HOOD SYSTEM
 
     // Hood Positions
-    private double hoodAngle = 34.6;
+    private double hoodAngle = 34.2;
     private double hoodOffset = 0;
     //endregion
 
     //region SPINDEXER SYSTEM
-    // PIDF Constants
-    private double pidKp = 0.0052;
+    // Spindexer PIDF Constants
+    private double pidKp = 0.006;
     private double pidKi = 0.0;
-    private double pidKd = 0.0009;
-    private double pidKf = 0.007;
+    private double pidKd = 0.000425;
+    private double pidKf = 0.001;
 
-    // PID State
+    // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 500.0;
+    private double integralLimit = 300.0;
     private double pidLastTimeMs = 0.0;
+    private double lastFilteredD = 0.0;
 
-
-    private double dFiltered = 0.0;
-    private double dAlpha = 0.86;
-
-    // Control Parameters
+    // Spindexer Control Parameters
     private final double positionToleranceDeg = 2.0;
     private final double outputDeadband = 0.03;
+    private boolean spindexerOverride = false;
+    private double overrideTime = 0.0;
 
-    // Position Presets (6 slots)
-    private final double[] SPINDEXER_POSITIONS = {332, 32, 92, 152, 212, 272};
+    // Spindexer Positions
+    private final double[] SPINDEXER_POSITIONS = {49.75, 79.75, 109.75, 139.75, 169.75, 19.75};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
+    private int greenPos = 0;
 
-    // Ball Storage Tracking ('n','p','g')
-    private char[] savedBalls = {'g', 'p', 'p'};
-    int greenPos=0;
+    // Ball Storage Tracking
+    private char[] savedBalls = {'n', 'n', 'n'};
+    private boolean[] presentBalls = {false, false, false};
+
+    private boolean spindexerPidArmed = false;
+
     boolean intakeOn = false;
 
-    // Auto-intake State Machine
-    private enum SpindexerState {
-        IDLE,
-        FIND_EMPTY_SLOT,
-        ROTATE_TO_SLOT,
-        WAIT_FOR_SETTLE,
-        WAIT_FOR_BALL
-    }
 
-    private SpindexerState spState = SpindexerState.IDLE;
-    private int currentSlot = -1;
-    private long settleStartMs = 0;
-
-    // Ball detection thresholds
-    private static final float BALL_ALPHA_ON  = 0.20f;
-    private static final float BALL_ALPHA_OFF = 0.13f;
-
-    private boolean ballPresentLatched = false;
-
-    // Runtime Spindexer Vars
-    private double spindexerAngleDeg = 0.0;
-    private double spindexerErrorDeg = 0.0;
     private double spindexerOutput = 0.0;
     private boolean spindexerAtTarget = false;
     private double lastColorRead = 0;
@@ -224,7 +206,7 @@ public class FarRed12Ball extends LinearOpMode {
     private double tuPos = 0;
     //endregion
 
-    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 1.8, 1.6);
+    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 0.85, 1);
 
     public void createPoses(){
         startPose = new Pose(144-56.8,8,Math.toRadians(0));
@@ -329,8 +311,8 @@ public class FarRed12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1393;
-        int shoot0change = -85;
+        int flySpeed = 1380;
+        int shoot0change = -95;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -420,7 +402,7 @@ public class FarRed12Ball extends LinearOpMode {
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
-        tuPos = -135;
+        tuPos = -130;
         flySpeed -= shoot0change;
 
         //WAIT
@@ -461,13 +443,14 @@ public class FarRed12Ball extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(scorePath0,true);
                             motifOn = true;
+                            flywheel.Kp += 0.0004;
 
-                            timeout = runtime.milliseconds()+850;
+                            timeout = runtime.milliseconds()+3000;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -138;
+                            tuPos = -130.5;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -481,6 +464,7 @@ public class FarRed12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
+                            flywheel.Kp -= 0.0005;
 
                             flySpeed += shoot0change;
                             subState++;
@@ -489,7 +473,7 @@ public class FarRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath1,true);
-                            tuPos = -139;
+                            tuPos = -133;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -510,7 +494,7 @@ public class FarRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
-                            tuPos -= 1.5;
+                            tuPos -= 1.2;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -896,68 +880,73 @@ public class FarRed12Ball extends LinearOpMode {
         }
         return s1Detected || s2Detected;
     }
-    private void updateSpindexerPID(double targetAngle, double dt) {
-        double ccwOffset = -6.0;
-        // read angles 0..360
-        double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
-
-        //raw error
-        double rawError = -angleError(targetAngle, angle);
-
-        //adds a constant term if it's in a certain direction.
-        // we either do this or we change the pid values for each direction.
-        // gonna try and see if simpler method works tho
-        double compensatedTarget = targetAngle;
-        if (rawError < 0) { // moving CCW
-            compensatedTarget = (targetAngle + ccwOffset) % 360.0;
+    private void updateSpindexerPID(double targetBaseAngle, double dt) {
+        if (!spindexerPidArmed) {
+            lastError = 0;
+            lastFilteredD = 0;
+            integral = 0;
+            spin1.setPower(0);
+            spin2.setPower(0);
+            spindexerPidArmed = true;
+            return;
         }
-        // compute shortest signed error [-180,180]
-        double error = -angleError(compensatedTarget, angle);
+        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
 
-        //store for outside use
-        spindexerAngleDeg = angle;
-        spindexerErrorDeg = error;
+        // 1. Twin Target Logic
+        double targetB = (targetBaseAngle + 180.0) % 360.0;
 
-        // integral with anti-windup
-        integral += error * dt;
-        integral = clamp(integral, -integralLimit, integralLimit);
+        double errorA = -angleError(targetBaseAngle, currentAngle);
+        double errorB = -angleError(targetB, currentAngle);
 
-        // derivative
-        double dRaw = (error - lastError) / Math.max(dt, 1e-6);
-        dFiltered = dAlpha * dFiltered + (1.0 - dAlpha) * dRaw;
-        double d = dFiltered;
+        double finalError = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
 
+        // 2. Integral Zone (Prevents windup, fixes "stopping short")
+        if (Math.abs(finalError) < 10.0) { // Only accumulate when close
+            integral += finalError * dt;
+        } else {
+            integral = 0;
+        }
+        integral = Range.clip(integral, -integralLimit, integralLimit);
 
-        // PIDF output (interpreted as servo power)
-        double out = pidKp * error + pidKi * integral + pidKd * d;
+        // 3. Filtered Derivative (The Jitter Fixer)
+        double rawD = (finalError - lastError) / Math.max(dt, 1e-6);
+        // Low-pass filter: 80% old value, 20% new value.
+        // This smooths out the analog encoder "flicker".
+        double filteredD = (lastFilteredD * 0.8) + (rawD * 0.2);
+        lastFilteredD = filteredD;
 
-        // small directional feedforward to overcome stiction when error significant
-        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
+        // 4. Calculate PID Output
+        double pOut = pidKp * finalError;
+        double iOut = pidKi * integral;
+        double dOut = pidKd * filteredD;
 
-        // clamp to [-1,1] and apply deadband
+        // 5. Static Feedforward (The Friction Killer)
+        // Applies a constant "kick" to break friction whenever we aren't at the target
+        double fOut = 0;
+        if (Math.abs(finalError) > positionToleranceDeg) {
+            fOut = Math.signum(finalError) * pidKf;
+        }
+
+        double out = pOut + iOut + dOut + fOut;
+
+        // 6. Output Management
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < outputDeadband) out = 0.0;
 
-        // if within tolerance, zero outputs and decay integrator to avoid bumping
-        if (Math.abs(error) <= positionToleranceDeg) {
+        // Stop and decay integral when inside tolerance
+        if (Math.abs(finalError) <= positionToleranceDeg) {
             out = 0.0;
             integral *= 0.2;
         }
 
-        //store for outside use
         spindexerOutput = out;
-        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+10);
+        spindexerAtTarget = (Math.abs(finalError) <= positionToleranceDeg+10);
 
-        // apply powers (flip one if your servo is mirrored - change sign if needed)
+
         spin1.setPower(out);
         spin2.setPower(out);
 
-        // store errors for next derivative calculation
-        lastError = error;
-
-        // telemetry for PID (keeps concise, add more if you want)
-        telemetry.addData("Spindexer Target", "%.1f°", targetAngle);
-
+        lastError = finalError;
     }
 
     private void updateTurretPID(double targetAngle, double dt) {
