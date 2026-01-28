@@ -150,13 +150,13 @@ public class CloseBlue12BallPartner extends LinearOpMode {
     // Spindexer PIDF Constants
     private double pidKp = 0.006;
     private double pidKi = 0.0;
-    private double pidKd = 0.000425;
-    private double pidKf = 0.001;
+    private double pidKd = 0.00095;//0.00065
+    private double pidKf = 0.007;
 
     // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 300.0;
+    private double integralLimit = 4.0;
     private double pidLastTimeMs = 0.0;
     private double lastFilteredD = 0.0;
 
@@ -177,9 +177,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
     private boolean[] presentBalls = {false, false, false};
 
     private boolean spindexerPidArmed = false;
-    boolean intakeOn = false;
-    private double spindexerOutput = 0.0;
     private boolean spindexerAtTarget = false;
+    private boolean intakeOn = false;
     //endregion
 
     //region TURRET SYSTEM
@@ -334,6 +333,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         boolean intakeLimelightOn = false;
         boolean gateCutoff = false;
         boolean shutoffIntake = false;
+        boolean cutoffSpinPID = false;
         //endregion
 
         //region HARDWARE INFO
@@ -670,9 +670,6 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     shutoffIntake = false;
                 }
             }
-//            else{
-//                getRealColor();
-//            }
             //endregion
 
             //region HOOD CONTROL
@@ -682,7 +679,9 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 
             //region SPINDEXER
             double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle+ GlobalOffsets.spindexerOffset, dtSec);
+            if(!cutoffSpinPID){
+                updateSpindexerPID(targetAngle+ GlobalOffsets.spindexerOffset, dtSec);
+            }
             //endregion
 
             //region SHOOT PREP
@@ -721,35 +720,26 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                 intake.setPower(0);
 //                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
-                if(shootingState==1){
+                if(shootingState==1&&spindexerAtTarget){
                     transOn = true;
-//                    if(turretAtTarget){
-                        spinClock();
+                    if(turretAtTarget){
+                        spin1.setPower(0.93);
+                        spin2.setPower(0.93);
+                        cutoffSpinPID = true;
 
-                        timeout=runtime.milliseconds()+300;
+                        timeout=runtime.milliseconds()+900;
                         shootingState++;
-//                    }
+                    }
                 }
                 else if(shootingState==2){
-                    spinClock();
-
-                    timeout=runtime.milliseconds()+300;
-                    shootingState++;
-                }
-                else if(shootingState==3){
-                    spinClock();
                     savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
 
-                    shootingState++;
-                }
-                else if(shootingState==4&&spindexerAtTarget){
+                    cutoffSpinPID = false;
                     shootReady = false;
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
-                    if (pathState != 2 || runtime.milliseconds() > 17500) {//previously 19500
-                        pathState++;
-                    }
+                    pathState++;
                 }
             }
             //endregion
@@ -867,17 +857,6 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         return 'n';
     }
 
-    public void spinClock() {
-        prevSpindexerIndex = spindexerIndex;
-        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
-        spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
-    }
-    public void spinCounterClock() {
-        prevSpindexerIndex = spindexerIndex;
-        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
-        spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
-    }
-
     private int indexToSlot(int index) {
         switch (index) {
             case 0: return 0;
@@ -913,7 +892,20 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         }
         return s1Detected || s2Detected;
     }
-    private void updateSpindexerPID(double targetBaseAngle, double dt) {
+    //region SPINDEXER HELPERS
+    public void spinClock() {
+        prevSpindexerIndex = spindexerIndex;
+        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+        spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
+    }
+
+    public void spinCounterClock() {
+        prevSpindexerIndex = spindexerIndex;
+        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
+        spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
+    }
+
+    private void updateSpindexerPID(double targetAngle, double dt) {
         if (!spindexerPidArmed) {
             lastError = 0;
             lastFilteredD = 0;
@@ -923,67 +915,87 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             spindexerPidArmed = true;
             return;
         }
-        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
+        double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
 
-        // 1. Twin Target Logic
-        double targetB = (targetBaseAngle + 180.0) % 360.0;
+        double targetB = (targetAngle + 180.0) % 360.0;
 
-        double errorA = -angleError(targetBaseAngle, currentAngle);
-        double errorB = -angleError(targetB, currentAngle);
+        double errorA = -angleError(targetAngle, angle);
+        double errorB = -angleError(targetB, angle);
 
-        double finalError = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
+        // compute shortest signed error [-180,180]
+        double error = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
 
-        // 2. Integral Zone (Prevents windup, fixes "stopping short")
-        if (Math.abs(finalError) < 10.0) { // Only accumulate when close
-            integral += finalError * dt;
-        } else {
-            integral = 0;
-        }
-        integral = Range.clip(integral, -integralLimit, integralLimit);
+        // integral with anti-windup
+        integral += error * dt;
+        integral = clamp(integral, -integralLimit, integralLimit);
 
-        // 3. Filtered Derivative (The Jitter Fixer)
-        double rawD = (finalError - lastError) / Math.max(dt, 1e-6);
-        // Low-pass filter: 80% old value, 20% new value.
-        // This smooths out the analog encoder "flicker".
-        double filteredD = (lastFilteredD * 0.8) + (rawD * 0.2);
-        lastFilteredD = filteredD;
+        // derivative
+        double rawD = (error - lastError) / Math.max(dt, 1e-6);
 
-        // 4. Calculate PID Output
-        double pOut = pidKp * finalError;
-        double iOut = pidKi * integral;
-        double dOut = pidKd * filteredD;
+        double d = (lastFilteredD * 0.8) + (rawD * 0.2);
+        lastFilteredD = d;
 
-        // 5. Static Feedforward (The Friction Killer)
-        // Applies a constant "kick" to break friction whenever we aren't at the target
-        double fOut = 0;
-        if (Math.abs(finalError) > positionToleranceDeg) {
-            fOut = Math.signum(finalError) * pidKf;
-        }
+        // PIDF output (interpreted as servo power)
+        double out = pidKp * error + pidKi * integral + pidKd * d;
 
-        double out = pOut + iOut + dOut + fOut;
+        // small directional feedforward to overcome stiction when error significant
+        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
 
-        // 6. Output Management
+        // clamp to [-1,1] and apply deadband
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < outputDeadband) out = 0.0;
 
-        // Stop and decay integral when inside tolerance
-        if (Math.abs(finalError) <= positionToleranceDeg) {
+        // if within tolerance, zero outputs and decay integrator to avoid bumping
+        if (Math.abs(error) <= positionToleranceDeg) {
             out = 0.0;
             integral *= 0.2;
         }
 
-        //store for outside use
-        spindexerOutput = out;
-        spindexerAtTarget = (Math.abs(finalError) <= positionToleranceDeg+10);
+        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+10);
 
         spin1.setPower(out);
         spin2.setPower(out);
 
-        lastError = finalError;
-        telemetry.addData("TARGET", spindexerAtTarget);
+        lastError = error;
 
-        telemetry.addData("ERROR", finalError);
+        telemetry.addData("ENCODER VOLTAGE", spinEncoder.getVoltage());
+        telemetry.addData("ANGLE", targetAngle);
+        telemetry.addData("INTEGRAL", integral);
     }
+
+    public void calculateNearestIndex() {
+        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
+
+        int bestIndex = spindexerIndex;
+        double minAbsError = 360.0;
+
+        for (int i = 0; i < SPINDEXER_POSITIONS.length; i++) {
+            double baseTarget = SPINDEXER_POSITIONS[i] + GlobalOffsets.spindexerOffset;
+
+            // 1. Check the Normal Target
+            double errorNormal = Math.abs(angleError(baseTarget, currentAngle));
+
+            // 2. Check the "Ghost" Target (180 degrees away)
+            // Since gearing is 1:2, this is the same physical position
+            double ghostTarget = baseTarget + 180.0;
+            double errorGhost = Math.abs(angleError(ghostTarget, currentAngle));
+
+            // Find which one is closer
+            double localMinError = Math.min(errorNormal, errorGhost);
+
+            // Compare against the global best found so far
+            if (localMinError < minAbsError) {
+                minAbsError = localMinError;
+                bestIndex = i;
+            }
+        }
+
+        // Update the index.
+        // The PID loop will automatically handle choosing between
+        // the Normal or Ghost target again in the next frame.
+        spindexerIndex = bestIndex;
+    }
+    //endregion
     private void updateTurretPID(double targetAngle, double dt) {
         // read angles 0..360
         double angle = mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29);
