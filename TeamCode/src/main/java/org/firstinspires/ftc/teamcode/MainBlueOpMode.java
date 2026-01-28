@@ -256,6 +256,9 @@ public class MainBlueOpMode extends LinearOpMode
 
         // Localization
         boolean localizeApril = true;
+
+        // Color Sorting
+        int classifiedBalls = 0;
         //endregion
 
         //region HARDWARE INITIALIZATION
@@ -642,6 +645,11 @@ public class MainBlueOpMode extends LinearOpMode
                 }
             }
 
+            //Pattern "number of balls classified" thing wtvr
+            if(gamepad2.squareWasPressed()) classifiedBalls = 0;
+            if(gamepad2.crossWasPressed()) classifiedBalls = 1;
+            if(gamepad2.circleWasPressed()) classifiedBalls = 2;
+
             //Pattern sorting
             if (gamepad1.dpadDownWasPressed()) {
                 tranOn = false;
@@ -664,6 +672,8 @@ public class MainBlueOpMode extends LinearOpMode
                 if(diff==0) spindexerIndex=4;
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
+
+                spindexerIndex += classifiedBalls;
             }
 
             //region TRANSFER CONTROL
@@ -724,14 +734,14 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region ENDGAME NAVIGATION
-            if (gamepad2.dpadLeftWasPressed() && gamepad2.circleWasPressed() && !follower.isBusy()) {
+            if (gamepad2.dpadLeftWasPressed() && gamepad2.triangleWasPressed() && !follower.isBusy()) {
                 endgame = follower.pathBuilder()
                         .addPath(new BezierLine(follower.getPose(), endgamePose))
                         .setLinearHeadingInterpolation(follower.getHeading(), endgamePose.getHeading())
                         .build();
                 follower.followPath(endgame, true);
             }
-            if (gamepad2.circleWasPressed()) {
+            if (gamepad2.triangleWasPressed()) {
                 follower.breakFollowing();
             }
             //endregion
