@@ -86,9 +86,11 @@ public class MainBlueOpMode extends LinearOpMode
     // Mechanism Motors
     private DcMotorEx fly1 = null;
     private DcMotorEx fly2 = null;
-    private DcMotor intake = null;
-    private DcMotor trans = null;
+    private DcMotor intakePre = null;
+    private DcMotor transPre = null;
 
+    private CachingDcMotor intake = null;
+    private CachingDcMotor trans = null;
     // Servos
     private Servo led = null;
     private Servo hood = null;
@@ -128,15 +130,15 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
-    private double pidKp = 0.006;
+    private double pidKp = 0.007;
     private double pidKi = 0.0;
-    private double pidKd = 0.000425;
-    private double pidKf = 0.006;
+    private double pidKd = 0.00062;
+    private double pidKf = 0.025;
 
     // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 300.0;
+    private double integralLimit = 4.0;
     private double pidLastTimeMs = 0.0;
     private double lastFilteredD = 0.0;
 
@@ -157,7 +159,6 @@ public class MainBlueOpMode extends LinearOpMode
     private boolean[] presentBalls = {false, false, false};
 
     private boolean spindexerPidArmed = false;
-
     //endregion
 
     //region TURRET SYSTEM
@@ -228,6 +229,8 @@ public class MainBlueOpMode extends LinearOpMode
     private static final double TAG_Y = 129.0;
     //endregion
 
+
+    public int loopNum = 0;
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -265,8 +268,10 @@ public class MainBlueOpMode extends LinearOpMode
         // Initialize Mechanism Motors
         fly1 = hardwareMap.get(DcMotorEx.class, "fly1");
         fly2 = hardwareMap.get(DcMotorEx.class, "fly2");
-        intake = hardwareMap.get(DcMotor.class, "in");
-        trans = hardwareMap.get(DcMotor.class, "trans");
+        intakePre = hardwareMap.get(DcMotor.class, "in");
+        transPre = hardwareMap.get(DcMotor.class, "trans");
+        intake = new CachingDcMotor(intakePre);
+        trans = new CachingDcMotor(transPre);
 
         // Initialize Servos
         spin1 = hardwareMap.get(CRServo.class, "spin1");
@@ -336,6 +341,7 @@ public class MainBlueOpMode extends LinearOpMode
         //endregion
 
         while (opModeIsActive()) {
+            loopNum++;
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
             double nowMs = runtime.milliseconds();
@@ -488,12 +494,14 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region COLOR SENSOR AND BALL TRACKING
-            char detectedColor = getRealColor();
-            boolean present = isBallPresent();
+            if (intakeOn) {
+                char detectedColor = getRealColor();
+                boolean present = isBallPresent();
 
-            //start detection when spindexer has reached rest position
-            if (Math.abs(lastError) < 12) {
-                setBallAtIndex(spindexerIndex, detectedColor, present);
+                //start detection when spindexer has reached rest position
+                if (Math.abs(lastError) < 4) {
+                    setBallAtIndex(spindexerIndex, detectedColor, present);
+                }
             }
 
             telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
@@ -578,6 +586,15 @@ public class MainBlueOpMode extends LinearOpMode
             //region INTAKE CONTROL
             if (gamepad1.rightBumperWasPressed()) {
                 intakeOn = !intakeOn;
+                if (intakeOn) {
+                    pidKp = 0.006;
+                    pidKf = 0.007;
+                    pidKd = 0.00065;
+                } else {
+                    pidKp = 0.007;
+                    pidKd = 0.00062;
+                    pidKf = 0.025;
+                }
                 tranOn = false;
             }
 
@@ -775,12 +792,12 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
-                tuKf += 0.002;
+                pidKd += 0.00002;
                 lastTriggered = runtime.milliseconds();
 //                flyHoodLock = !flyHoodLock;
             }
             if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
-                tuKf -= 0.002;
+                pidKd -= 0.00002;
                 lastTriggered = runtime.milliseconds();
                 //flyHoodLock = !flyHoodLock;
             }
@@ -788,7 +805,8 @@ public class MainBlueOpMode extends LinearOpMode
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.addData("last position", StateVars.lastPose);
-            telemetry.addData("pidKf", "%.7f", tuKf);
+            telemetry.addData("pidKd", "%.7f", pidKd);
+            telemetry.addData("avg looptime", runtime.milliseconds()/loopNum);
 
             telemetry.update();
         }
@@ -829,13 +847,15 @@ public class MainBlueOpMode extends LinearOpMode
         spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
         spinBallLED();
     }
+
     public void spinCounterClock() {
         prevSpindexerIndex = spindexerIndex;
         spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
         spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
         spinBallLED();
     }
-    private void updateSpindexerPID(double targetBaseAngle, double dt) {
+
+    private void updateSpindexerPID(double targetAngle, double dt) {
         if (!spindexerPidArmed) {
             lastError = 0;
             lastFilteredD = 0;
@@ -845,51 +865,38 @@ public class MainBlueOpMode extends LinearOpMode
             spindexerPidArmed = true;
             return;
         }
-        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
+        double angle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
 
-        // 1. Twin Target Logic
-        double targetB = (targetBaseAngle + 180.0) % 360.0;
+        double targetB = (targetAngle + 180.0) % 360.0;
 
-        double errorA = -angleError(targetBaseAngle, currentAngle);
-        double errorB = -angleError(targetB, currentAngle);
+        double errorA = -angleError(targetAngle, angle);
+        double errorB = -angleError(targetB, angle);
 
-        double finalError = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
+        // compute shortest signed error [-180,180]
+        double error = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
 
-        // 2. Integral Zone (Prevents windup, fixes "stopping short")
-        if (Math.abs(finalError) < 10.0) { // Only accumulate when close
-            integral += finalError * dt;
-        } else {
-            integral = 0;
-        }
-        integral = Range.clip(integral, -integralLimit, integralLimit);
+        // integral with anti-windup
+        integral += error * dt;
+        integral = clamp(integral, -integralLimit, integralLimit);
 
-        // 3. Filtered Derivative (The Jitter Fixer)
-        double rawD = (finalError - lastError) / Math.max(dt, 1e-6);
-        // Low-pass filter: 80% old value, 20% new value.
-        // This smooths out the analog encoder "flicker".
-        double filteredD = (lastFilteredD * 0.8) + (rawD * 0.2);
-        lastFilteredD = filteredD;
+        // derivative
+        double rawD = (error - lastError) / Math.max(dt, 1e-6);
 
-        // 4. Calculate PID Output
-        double pOut = pidKp * finalError;
-        double iOut = pidKi * integral;
-        double dOut = pidKd * filteredD;
+        double d = (lastFilteredD * 0.8) + (rawD * 0.2);
+        lastFilteredD = d;
 
-        // 5. Static Feedforward (The Friction Killer)
-        // Applies a constant "kick" to break friction whenever we aren't at the target
-        double fOut = 0;
-        if (Math.abs(finalError) > positionToleranceDeg) {
-            fOut = Math.signum(finalError) * pidKf;
-        }
+        // PIDF output (interpreted as servo power)
+        double out = pidKp * error + pidKi * integral + pidKd * d;
 
-        double out = pOut + iOut + dOut + fOut;
+        // small directional feedforward to overcome stiction when error significant
+        if (Math.abs(error) > 1.0) out += pidKf * Math.signum(error);
 
-        // 6. Output Management
+        // clamp to [-1,1] and apply deadband
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < outputDeadband) out = 0.0;
 
-        // Stop and decay integral when inside tolerance
-        if (Math.abs(finalError) <= positionToleranceDeg) {
+        // if within tolerance, zero outputs and decay integrator to avoid bumping
+        if (Math.abs(error) <= positionToleranceDeg) {
             out = 0.0;
             integral *= 0.2;
         }
@@ -897,8 +904,11 @@ public class MainBlueOpMode extends LinearOpMode
         spin1.setPower(out);
         spin2.setPower(out);
 
-        lastError = finalError;
-        telemetry.addData("LAST ERROR", lastError);
+        lastError = error;
+
+        telemetry.addData("ENCODER VOLTAGE", spinEncoder.getVoltage());
+        telemetry.addData("ANGLE", targetAngle);
+        telemetry.addData("INTEGRAL", integral);
     }
 
     public void calculateNearestIndex() {
