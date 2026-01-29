@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.subsystems;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 
@@ -13,7 +13,7 @@ public class FlywheelPIDController {
     // Variables to tune
     public double Kp = 0.0022;
     public double Ki = 0.0001;
-    public double Kd = 0.0008;
+    public double Kd = 0.0003;
     public double Kv = 0.000446;
     public double Ka = 1e-7;
 
@@ -34,7 +34,7 @@ public class FlywheelPIDController {
     private double lastError = 0.0;
     public double lastMeasuredVelocity = 0.0;
     private double dFiltered = 0.0;
-    public double dFilterAlpha = 0.2;
+    public double dFilterAlpha = 0.05;
 
     // state stuff
     public double commandedVelocity = 0.0;
