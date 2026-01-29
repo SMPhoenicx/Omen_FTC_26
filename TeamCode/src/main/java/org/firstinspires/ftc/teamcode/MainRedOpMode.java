@@ -31,7 +31,6 @@ package org.firstinspires.ftc.teamcode;
 
 import static java.lang.Math.round;
 
-import android.graphics.Color;
 import android.util.Size;
 
 import com.pedropathing.follower.Follower;
@@ -61,12 +60,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+import org.firstinspires.ftc.teamcode.subsystems.FlywheelPIDController;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -222,8 +221,8 @@ public class MainRedOpMode extends LinearOpMode
     private static final int DESIRED_TAG_ID = 24; //blue=20, red=24
     private static final Pose LOCALIZE_POSE = new Pose(9, 8.9, Math.toRadians(180));
     Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
-    static final double TAG_X = 129.6;
-    static final double TAG_Y = 129.0;
+    static final double TAG_X = 129.7;
+    static final double TAG_Y = 130.0;
     //endregion
 
     @Override
