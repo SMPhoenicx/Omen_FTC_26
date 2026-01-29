@@ -146,10 +146,10 @@ public class FarBlue12Ball extends LinearOpMode {
 
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
-    private double pidKp = 0.006;
+    private double pidKp = 0.004;
     private double pidKi = 0.0;
-    private double pidKd = 0.00095;//0.00065
-    private double pidKf = 0.007;
+    private double pidKd = 0.00035;//0.00065
+    private double pidKf = 0.006;
 
     // Spindexer PID State
     private double integral = 0.0;
@@ -159,13 +159,13 @@ public class FarBlue12Ball extends LinearOpMode {
     private double lastFilteredD = 0.0;
 
     // Spindexer Control Parameters
-    private final double positionToleranceDeg = 2.0;
+    private final double positionToleranceDeg = 1.0;
     private final double outputDeadband = 0.03;
     private boolean spindexerOverride = false;
     private double overrideTime = 0.0;
 
     // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {49.75, 79.75, 109.75, 139.75, 169.75, 19.75};
+    private final double[] SPINDEXER_POSITIONS = {51.75, 81.75, 111.75, 141.75, 171.75, 21.75};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
     private int greenPos = 0;
@@ -917,7 +917,7 @@ public class FarBlue12Ball extends LinearOpMode {
             integral *= 0.2;
         }
 
-        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+10);
+        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+15);
 
         spin1.setPower(out);
         spin2.setPower(out);

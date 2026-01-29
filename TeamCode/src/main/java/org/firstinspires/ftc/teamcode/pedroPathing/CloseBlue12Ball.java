@@ -146,10 +146,10 @@ public class CloseBlue12Ball extends LinearOpMode {
 
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
-    private double pidKp = 0.006;
+    private double pidKp = 0.004;
     private double pidKi = 0.0;
-    private double pidKd = 0.00095;//0.00065
-    private double pidKf = 0.007;
+    private double pidKd = 0.00035;//0.00065
+    private double pidKf = 0.006;
 
     // Spindexer PID State
     private double integral = 0.0;
@@ -159,13 +159,13 @@ public class CloseBlue12Ball extends LinearOpMode {
     private double lastFilteredD = 0.0;
 
     // Spindexer Control Parameters
-    private final double positionToleranceDeg = 2.0;
+    private final double positionToleranceDeg = 1.0;
     private final double outputDeadband = 0.03;
     private boolean spindexerOverride = false;
     private double overrideTime = 0.0;
 
     // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {49.75, 79.75, 109.75, 139.75, 169.75, 19.75};
+    private final double[] SPINDEXER_POSITIONS = {51.75, 81.75, 111.75, 141.75, 171.75, 21.75};
     private int spindexerIndex = 0;
     private int prevSpindexerIndex = 0;
     private int greenPos = 0;
@@ -415,29 +415,8 @@ public class CloseBlue12Ball extends LinearOpMode {
         pidLastTimeMs = runtime.milliseconds();
 
         while(opModeIsActive()){
-//            follower.update();
+            follower.update();
             StateVars.lastPose = follower.getPose();
-
-            //region TEMP UH
-//            private double pidKp = 0.006;
-//            private double pidKi = 0.0;
-//            private double pidKd = 0.00095;//0.00065
-//            private double pidKf = 0.007;
-            intakeOn=true;
-            if(gamepad2.dpadUpWasPressed()) pidKp +=    0.0001;
-            if(gamepad2.dpadDownWasPressed()) pidKp -=  0.0001;
-            if(gamepad2.dpadLeftWasPressed()) pidKi +=  0.0001;
-            if(gamepad2.dpadRightWasPressed()) pidKi -= 0.0001;
-            if(gamepad2.triangleWasPressed()) pidKd +=  0.00005;
-            if(gamepad2.crossWasPressed()) pidKd -=     0.00005;
-            if(gamepad2.squareWasPressed()) pidKf +=    0.0001;
-            if(gamepad2.circleWasPressed()) pidKf -=    0.0001;
-
-            telemetry.addData("P",pidKp);
-            telemetry.addData("I",pidKi);
-            telemetry.addData("D",pidKd);
-            telemetry.addData("F",pidKf);
-            //endregion
 
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
@@ -452,9 +431,6 @@ public class CloseBlue12Ball extends LinearOpMode {
             if (dtSec <= 0.0) dtSec = 1.0 / 50.0;
 
             double turnInput = -gamepad1.right_stick_x;
-
-            follower.update();
-            Pose robotPose = follower.getPose();
             //endregion
 
             //region PATH STUFF
@@ -942,7 +918,7 @@ public class CloseBlue12Ball extends LinearOpMode {
             integral *= 0.2;
         }
 
-        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+10);
+        spindexerAtTarget = (Math.abs(error) <= positionToleranceDeg+15);
 
         spin1.setPower(out);
         spin2.setPower(out);
