@@ -222,7 +222,7 @@ public class FarRed12Ball extends LinearOpMode {
                 .setConstantHeadingInterpolation(shoot0.getHeading())
                 .addParametricCallback(0.87,()-> {
                     shootReady=true;
-                    timeout = 400;
+//                    timeout = 400;
                 })
                 .build();
         pickupPath1 = follower.pathBuilder()
@@ -302,7 +302,7 @@ public class FarRed12Ball extends LinearOpMode {
         int shootingState = 0;
         boolean running = true;
         int flySpeed = 1380;
-        int shoot0change = -500;
+        int shoot0change = -35;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -434,15 +434,14 @@ public class FarRed12Ball extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(scorePath0,true);
                             motifOn = true;
-                            flywheel.Kp += 0.004;
-                            flywheel.Kd -= 0.0002;
+//                            flywheel.Kd -= 0.0002;
 
+                            timeout = runtime.milliseconds()+2000;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            timeout = runtime.milliseconds()+8000;
-                            tuPos = -130.5;
+                            tuPos = -125;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -456,8 +455,7 @@ public class FarRed12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
-                            flywheel.Kp -= 0.004;
-                            flywheel.Kd += 0.0002;
+//                            flywheel.Kd += 0.0002;
 
                             flySpeed += shoot0change;
                             subState++;
@@ -670,8 +668,8 @@ public class FarRed12Ball extends LinearOpMode {
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
                 spindexerAtTarget=false;
-                timeout = runtime.milliseconds() + 300;
 
+//                if(runtime.milliseconds()>timeout) timeout = runtime.milliseconds() + 300;
                 shootingState++;
             }
             //endregion
