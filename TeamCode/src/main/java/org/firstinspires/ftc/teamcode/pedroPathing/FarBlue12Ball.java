@@ -681,7 +681,7 @@ public class FarBlue12Ball extends LinearOpMode {
                 intake.setPower(0);
 //                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
-                if(shootingState==1&&spindexerAtTarget){
+                if(shootingState==1){
                     transOn = true;
                     if(turretAtTarget){
                         spin1.setPower(0.93);
@@ -700,7 +700,9 @@ public class FarBlue12Ball extends LinearOpMode {
                     autoShootOn = false;
                     shootingState++;
                     subState=0;
-                    pathState++;
+                    if (pathState != 3 || runtime.milliseconds() > 25000) {
+                        pathState++;
+                    }
                 }
             }
             //endregion
