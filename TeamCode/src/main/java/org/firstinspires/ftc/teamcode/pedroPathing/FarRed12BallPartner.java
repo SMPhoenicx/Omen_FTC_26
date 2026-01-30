@@ -52,7 +52,7 @@ public class FarRed12BallPartner extends LinearOpMode {
 
     //region PEDRO VARS
     private Follower follower;
-    private Pose startPose, shoot1, movePoint;
+    private Pose startPose, shoot1, shoot0, movePoint;
     private Pose[] pickup1 = new Pose[2];
     private Pose[] pickup2 = new Pose[2];
     private Pose[] pickup3 = new Pose[3];
@@ -210,23 +210,23 @@ public class FarRed12BallPartner extends LinearOpMode {
         pickup3[0] = new Pose(144-58.25,7.76,Math.toRadians(0));
         pickup3[1] = new Pose(144-10.4,8.53,Math.toRadians(0));
 
+        shoot0 = new Pose(144-62.5,26.5,Math.toRadians(0));
         shoot1 = new Pose(144-58,19,Math.toRadians(0));
         movePoint = new Pose(144-35.5,18.5,Math.toRadians(90));
     }
 
     public void createPaths(){
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierLine(startPose,shoot1))
+                .addPath(new BezierLine(startPose,shoot0))
                 .setConstraints(shootConstraints)
-                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .setConstantHeadingInterpolation(shoot0.getHeading())
                 .addParametricCallback(0.87,()-> {
                     shootReady=true;
-                    timeout = 400;
                 })
                 .build();
         pickupPath1 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup1[0],pickup1[1]))
-                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .addPath(new BezierCurve(shoot0,pickup1[0],pickup1[1]))
+                .setConstantHeadingInterpolation(shoot0.getHeading())
                 .addParametricCallback(0.2,()->{
                     follower.setMaxPower(0.33);
                     intakeOn = true;
@@ -301,7 +301,7 @@ public class FarRed12BallPartner extends LinearOpMode {
         int shootingState = 0;
         boolean running = true;
         int flySpeed = 1380;
-        int shoot0change = -95;
+        int shoot0change = -35;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -433,14 +433,13 @@ public class FarRed12BallPartner extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(scorePath0,true);
                             motifOn = true;
-                            flywheel.Kp += 0.0004;
 
-                            timeout = runtime.milliseconds()+3000;
+                            timeout = runtime.milliseconds()+2000;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -130.5;
+                            tuPos = -125;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -454,7 +453,6 @@ public class FarRed12BallPartner extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
-                            flywheel.Kp -= 0.0005;
 
                             flySpeed += shoot0change;
                             subState++;
@@ -668,7 +666,7 @@ public class FarRed12BallPartner extends LinearOpMode {
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
                 spindexerAtTarget=false;
-                timeout = runtime.milliseconds() + 300;
+//                timeout = runtime.milliseconds() + 300;
 
                 shootingState++;
             }

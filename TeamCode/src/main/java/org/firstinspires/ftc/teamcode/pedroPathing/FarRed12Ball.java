@@ -222,7 +222,6 @@ public class FarRed12Ball extends LinearOpMode {
                 .setConstantHeadingInterpolation(shoot0.getHeading())
                 .addParametricCallback(0.87,()-> {
                     shootReady=true;
-//                    timeout = 400;
                 })
                 .build();
         pickupPath1 = follower.pathBuilder()
@@ -434,7 +433,6 @@ public class FarRed12Ball extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(scorePath0,true);
                             motifOn = true;
-//                            flywheel.Kd -= 0.0002;
 
                             timeout = runtime.milliseconds()+2000;
                             subState++;
@@ -455,7 +453,6 @@ public class FarRed12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
-//                            flywheel.Kd += 0.0002;
 
                             flySpeed += shoot0change;
                             subState++;
