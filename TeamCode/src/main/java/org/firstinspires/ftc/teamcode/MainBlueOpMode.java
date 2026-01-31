@@ -190,11 +190,11 @@ public class MainBlueOpMode extends LinearOpMode
     private double localizeTime = 0;
     //endregion
 
-    //region VARIANT VARS (Alliance Specific)
+    //region VARIANT VARS (Alliance Specific)x
     private static final double goalX = 0;
-    private static final double goalY = 143;
+    private static final double goalY = 144;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(135, 8.9, Math.toRadians(0));
+    private static final Pose LOCALIZE_POSE = new Pose(135.6, 8.27, Math.toRadians(0));
     private Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     private static final double TAG_X = 14.3;
     private static final double TAG_Y = 130.0;
@@ -418,9 +418,9 @@ public class MainBlueOpMode extends LinearOpMode
                     //    This amplifies correction if robot is far from the diagonal.
                     double signedDist = (rx + ry) - 144.0; // >0 means y > 144 - x (your "right" side)
                     double maxDistForScale = 120.0; // max expected magnitude (tune)
-                    double kScale = 0.5; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
+                    double kScale = 0.3; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
                     double lateralScale = 1.0 + kScale * (Math.max(-maxDistForScale, Math.min(maxDistForScale, signedDist)) / maxDistForScale);
-                    // Clamp so scale stays reasonable:
+
                     lateralScale = Math.max(0.5, Math.min(2.0, lateralScale));
 
                    double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
@@ -547,8 +547,8 @@ public class MainBlueOpMode extends LinearOpMode
 
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
-            if ((flyOn && isRapidFire) && (Math.abs(flyDiff) > 10) && (Math.abs(flyDiff) < 50)) {
-                recoilOffset = flyDiff*1.5;
+            if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 8) && (Math.abs(flyDiff) < 50)) {
+                recoilOffset = flyDiff*2;
             }
 
             double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
@@ -561,15 +561,16 @@ public class MainBlueOpMode extends LinearOpMode
             if (gamepad1.rightBumperWasPressed()) {
                 intakeOn = !intakeOn;
                 if (intakeOn) {
-                    SpindexerController.Kp = 0.006;
-                    SpindexerController.Kf = 0.007;
-                    SpindexerController.Kd = 0.00065;
+                    SpindexerController.Kp = 0.0063;
+                    SpindexerController.Kd = 0.0007;
+                    SpindexerController.Kf = 0.018;
+                    SpindexerController.tau = 0.05;
                     flywheel.Kd = 0.0007;
                 } else {
                     SpindexerController.Kp = 0.007;
-                    SpindexerController.Kd = 0.00062;
-                    SpindexerController.Kf = 0.025;
-
+                    SpindexerController.Kd = 0.00073;
+                    SpindexerController.Kf = 0.01;
+                    SpindexerController.tau = 0.035;
                     flywheel.Kd = 0.0003;
                 }
                 tranOn = false;
@@ -611,7 +612,7 @@ public class MainBlueOpMode extends LinearOpMode
                 boolean timeUp = (runtime.milliseconds() - rapidFireStartTime > 1200);
                 if (timeUp || intakeOn || spindexerOverride) {
                     spindexer.setRapidFire(false);
-                    tranOn = false;
+                    spindexer.isArmed = false;
                 }
             }
 
@@ -732,20 +733,22 @@ public class MainBlueOpMode extends LinearOpMode
 
             if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
             //    pidKd += 0.00002;
-                lastTriggered = runtime.milliseconds();
-//                flyHoodLock = !flyHoodLock;
+                //lastTriggered = runtime.milliseconds();
+               flyHoodLock = !flyHoodLock;
             }
-            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
-             //   pidKd -= 0.00002;
-                lastTriggered = runtime.milliseconds();
-                //flyHoodLock = !flyHoodLock;
-            }
+            //if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
+            //   pidKd -= 0.00002;
+            //   lastTriggered = runtime.milliseconds();
+            //flyHoodLock = !flyHoodLock;
+            //}
             //endregion
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.addData("last position", StateVars.lastPose);
             telemetry.addData("avg looptime", runtime.milliseconds()/loopNum);
 
+            telemetry.addData("velocity 1", fly1.getVelocity());
+            telemetry.addData("velocity 2", fly2.getVelocity());
             telemetry.addData("LAST ERROR", spindexer.lastError);
             telemetry.update();
         }

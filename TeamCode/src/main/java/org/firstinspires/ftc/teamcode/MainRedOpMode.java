@@ -36,6 +36,7 @@ import android.util.Size;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
+import com.pedropathing.math.Vector;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.lynx.LynxModule;
@@ -61,12 +62,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.teamcode.subsystems.FlywheelPIDController;
+import org.firstinspires.ftc.teamcode.subsystems.SpindexerController;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -87,7 +88,6 @@ public class MainRedOpMode extends LinearOpMode
     private DcMotorEx fly2 = null;
     private DcMotor intake = null;
     private DcMotor trans = null;
-
     // Servos
     private Servo led = null;
     private Servo hood = null;
@@ -126,36 +126,10 @@ public class MainRedOpMode extends LinearOpMode
     //endregion
 
     //region SPINDEXER SYSTEM
-    // Spindexer PIDF Constants
-    private double pidKp = 0.006;
-    private double pidKi = 0.0;
-    private double pidKd = 0.000425;
-    private double pidKf = 0.001;
-
-    // Spindexer PID State
-    private double integral = 0.0;
-    private double lastError = 0.0;
-    private double integralLimit = 300.0;
     private double pidLastTimeMs = 0.0;
-    private double lastFilteredD = 0.0;
-
-    // Spindexer Control Parameters
-    private final double positionToleranceDeg = 2.0;
-    private final double outputDeadband = 0.03;
+    private int greenPos = 0;
     private boolean spindexerOverride = false;
     private double overrideTime = 0.0;
-
-    // Spindexer Positions
-    private final double[] SPINDEXER_POSITIONS = {49.75, 79.75, 109.75, 139.75, 169.75, 19.75};
-    private int spindexerIndex = 0;
-    private int prevSpindexerIndex = 0;
-    private int greenPos = 0;
-
-    // Ball Storage Tracking
-    private char[] savedBalls = {'n', 'n', 'n'};
-    private boolean[] presentBalls = {false, false, false};
-
-    private boolean spindexerPidArmed = false;
 
     //endregion
 
@@ -164,7 +138,7 @@ public class MainRedOpMode extends LinearOpMode
     private double tuKp = 0.0050;
     private double tuKi = 0.0006;
     private double tuKd = 0.00014;
-    private double tuKf = 0.011;
+    private double tuKf = 0.005;
     private static final double tuKv = 0.00;
 
     private double lastTuTarget = 0.0;
@@ -203,6 +177,8 @@ public class MainRedOpMode extends LinearOpMode
     private double autoShootTime = 0;
     private boolean autoShot = false;
     private double lastTriggered = 0;
+    boolean isRapidFire = false;
+    double rapidFireStartTime = 0;
     //endregion
 
     //region NAVIGATION & LOCALIZATION
@@ -217,14 +193,18 @@ public class MainRedOpMode extends LinearOpMode
 
     //region VARIANT VARS (Alliance Specific)
     private static final double goalX = 144.0;
-    private static final double goalY = 143.0;
+    private static final double goalY = 144.0;
     private static final int DESIRED_TAG_ID = 24; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(9, 8.9, Math.toRadians(180));
+    private static final Pose LOCALIZE_POSE = new Pose(8.34, 8.28, Math.toRadians(180));
     Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     static final double TAG_X = 129.7;
     static final double TAG_Y = 130.0;
     //endregion
 
+    private SpindexerController spindexer;
+    Vector velocity = new Vector(0,0);
+
+    public int loopNum = 0;
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -250,6 +230,9 @@ public class MainRedOpMode extends LinearOpMode
 
         // Localization
         boolean localizeApril = true;
+
+        // Color Sorting
+        int classifiedBalls = 0;
         //endregion
 
         //region HARDWARE INITIALIZATION
@@ -302,12 +285,16 @@ public class MainRedOpMode extends LinearOpMode
         turret2.setDirection(CRServo.Direction.FORWARD);
         hood.setDirection(Servo.Direction.REVERSE);
         //endregion
+
+        //region SUBSYSTEM INITIALIZATION
         flywheel = new FlywheelPIDController(
                 hardwareMap.get(DcMotorEx.class, "fly1"),
                 hardwareMap.get(DcMotorEx.class, "fly2")
         );
         flywheel.teleopMultiplier = 0.88;
 
+        spindexer = new SpindexerController(spin1, spin2, spinEncoder);
+        //endregion
 
         //region PRE-START
         follower = Constants.createFollower(hardwareMap);
@@ -333,6 +320,7 @@ public class MainRedOpMode extends LinearOpMode
         //endregion
 
         while (opModeIsActive()) {
+            loopNum++;
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
             double nowMs = runtime.milliseconds();
@@ -345,6 +333,7 @@ public class MainRedOpMode extends LinearOpMode
 
             follower.update();
             Pose robotPose = follower.getPose();
+            velocity = follower.getVelocity();
             //endregion
 
             //region TRACKING AND LOCALIZATION
@@ -461,10 +450,22 @@ public class MainRedOpMode extends LinearOpMode
             //endregion
 
             //region AUTO FLYSPEED/ANGLE
-            //dist calc from goal to bot
+            //position and range
             double dx = goalX - robotPose.getX();
             double dy = goalY - robotPose.getY();
             double odomRange = Math.hypot(dx, dy);
+
+            //velocity
+            double velX = velocity.getXComponent();
+            double velY = velocity.getYComponent();
+
+            //finds the unit vector in the direction of the goal
+            double unitVectorX = dx / odomRange;
+            double unitVectorY = dy / odomRange;
+
+            //gives you the velocity in the direction of the goal (radial velocity)
+            double radVel = (velX * unitVectorX) + (velY * unitVectorY);
+
 
             //smooth range so values rnt erratic
             if (!isInitialized) {
@@ -485,16 +486,16 @@ public class MainRedOpMode extends LinearOpMode
             //endregion
 
             //region COLOR SENSOR AND BALL TRACKING
-            char detectedColor = getRealColor();
-            boolean present = isBallPresent();
+            if (intakeOn) {
+                char detectedColor = getRealColor();
+                boolean present = isBallPresent();
 
-            //start detection when spindexer has reached rest position
-            if (lastError < 4 && lastError > -4) {
-                setBallAtIndex(spindexerIndex, detectedColor, present);
+                //start detection when spindexer has reached rest position
+                spindexer.updateBallState(detectedColor, present);
             }
 
-            telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", savedBalls[0], savedBalls[1], savedBalls[2]);
-            telemetry.addData("PRESNT Balls", "0: %b, 1: %b, 2: %b", presentBalls[0], presentBalls[1], presentBalls[2]);
+            telemetry.addData("Saved Balls", "0: %1c, 1: %1c, 2: %1c", spindexer.savedBalls[0], spindexer.savedBalls[1], spindexer.savedBalls[2]);
+            telemetry.addData("PRESNT Balls", "0: %b, 1: %b, 2: %b", spindexer.presentBalls[0], spindexer.presentBalls[1], spindexer.presentBalls[2]);
             //endregion
 
             //region FLYWHEEL CONTROL
@@ -533,13 +534,16 @@ public class MainRedOpMode extends LinearOpMode
             flyAtSpeed = Math.abs(flyTargetTicksPerSec - flywheel.lastMeasuredVelocity) < 50;
 
             // update LED & rumble
-            if (!flyOn) {
+            if (intakeOn && !spindexer.hasEmptySlot()) {
+                led.setPosition(0.6);
+            }
+            else if (!flyOn) {
                 led.setPosition(1); // white
             } else if (flyAtSpeed) {
                 if (prevflyState != flyAtSpeed) {
                     gamepad1.rumble(300);
                 }
-                led.setPosition(0.5); // blue
+                led.setPosition(0.5); // green
             } else {
                 led.setPosition(0.3); // red
             }
@@ -554,13 +558,35 @@ public class MainRedOpMode extends LinearOpMode
             if (gamepad2.dpadDownWasPressed()) {
                 hoodOffset += 5;
             }
+
+            double recoilOffset = 0.0;
+
+            double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
+
+            if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 5) && (Math.abs(flyDiff) < 50)) {
+                recoilOffset = flyDiff*2.2;
+            }
+
+            double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
+
             // Update Hood PID
-            hood.setPosition((hoodAngle + hoodOffset)/355.0);
+            hood.setPosition((finalHoodAngle)/355.0);
             //endregion
 
             //region INTAKE CONTROL
             if (gamepad1.rightBumperWasPressed()) {
                 intakeOn = !intakeOn;
+                if (intakeOn) {
+                    SpindexerController.Kp = 0.0063;
+                    SpindexerController.Kd = 0.0007;
+                    SpindexerController.tau = 0.05;
+                    flywheel.Kd = 0.0007;
+                } else {
+                    SpindexerController.Kp = 0.007;
+                    SpindexerController.Kd = 0.00073;
+                    SpindexerController.tau = 0.035;
+                    flywheel.Kd = 0.0003;
+                }
                 tranOn = false;
             }
 
@@ -578,44 +604,40 @@ public class MainRedOpMode extends LinearOpMode
             if (gamepad1.dpadLeftWasPressed()) {
                 spindexerOverride = true;
                 overrideTime = runtime.milliseconds();
-                spinCounterClock();
+                spindexer.spinCounterClockwise();
             }
             if (gamepad1.dpadRightWasPressed()) {
                 spindexerOverride = true;
                 overrideTime = runtime.milliseconds();
-                spinClock();
+                spindexer.spinClockwise();
             }
             if (spindexerOverride && runtime.milliseconds() - overrideTime > 1000) {
                 spindexerOverride = false;
             }
-            //intake positions are the even ones
+
+            //Rapid Fire stuff
             if (gamepad1.dpadUpWasPressed()) {
-                autoShot = true;
-                autoShootNum = 3;
+                spindexer.setRapidFire(true);
+                rapidFireStartTime = runtime.milliseconds();
                 tranOn = true;
             }
-            //TODO check if works
-            if (gamepad1.dpadDownWasPressed()) {
-                tranOn = false;
-                int greenIn=-1;
-                for(int i=0;i<3;i++){
-                    if(savedBalls[i]=='g'){
-                        greenIn=i;
-                    }
-                }
-                if(greenIn==-1){
-                    for(int i=0;i<3;i++){
-                        if(savedBalls[i]=='n'){
-                            greenIn=i;
-                        }
-                    }
-                }
-                if(greenIn==-1) greenIn=0;
 
-                int diff = (greenIn + greenPos) % 3;
-                if(diff==0) spindexerIndex=4;
-                else if(diff==1) spindexerIndex=0;
-                else spindexerIndex=2;
+            if (spindexer.getRapidFire()) {
+                boolean timeUp = (runtime.milliseconds() - rapidFireStartTime > 1200);
+                if (timeUp || intakeOn || spindexerOverride) {
+                    spindexer.setRapidFire(false);
+                    spindexer.isArmed = false;
+                }
+            }
+
+            //Pattern "number of balls classified" thing wtvr
+            if(gamepad2.squareWasPressed()) classifiedBalls = 0;
+            if(gamepad2.crossWasPressed()) classifiedBalls = 1;
+            if(gamepad2.circleWasPressed()) classifiedBalls = 2;
+
+            //Pattern sorting
+            if (gamepad1.dpadDownWasPressed()) {
+                spindexer.sortGreen(greenPos);
             }
 
             //region TRANSFER CONTROL
@@ -629,44 +651,12 @@ public class MainRedOpMode extends LinearOpMode
             }
             //endregion
 
-            //reset all when autoshot
-            if (autoShootNum == 1) {
-                Arrays.fill(savedBalls, 'n');
-                Arrays.fill(presentBalls, false);
-            }
-
-            //shoot all 3 balls with 270 ms delay between each. Aim to optimize and reduce time. might be mech thing tho
-            if (autoShot && autoShootNum > 0 && (runtime.milliseconds() - autoShootTime > 270)) {
-                spinClock();
-                autoShootNum--;
-                autoShootTime = runtime.milliseconds();
-            }
-
-            if (autoShootNum <= 0) {
-                autoShot = false;
-            }
-
             //spin to empty slot while intaking.
             if (intakeOn && !spindexerOverride) {
-                int currentSlot = -1;
-                // look for first empty slot in savedBalls
-                for (int i = 0; i < savedBalls.length; i++) {
-                    if (savedBalls[i] == 'n') {
-                        currentSlot = i;
-                        break;
-                    }
-                }
-                if (currentSlot != -1) {
-                    int targetIndex = currentSlot * 2;
-                    if (spindexerIndex != targetIndex) {
-                        prevSpindexerIndex = spindexerIndex;
-                        spindexerIndex = targetIndex;
-                    }
-                }
+                spindexer.autoIndexForIntake();
             }
 
-            double targetAngle = SPINDEXER_POSITIONS[spindexerIndex];
-            updateSpindexerPID(targetAngle + GlobalOffsets.spindexerOffset, dtSec);
+            spindexer.update(dtSec);
             //endregion
 
             //region GOAL TRACKING
@@ -688,14 +678,14 @@ public class MainRedOpMode extends LinearOpMode
             //endregion
 
             //region ENDGAME NAVIGATION
-            if (gamepad2.dpadLeftWasPressed() && gamepad2.circleWasPressed() && !follower.isBusy()) {
+            if (gamepad2.dpadLeftWasPressed() && gamepad2.triangleWasPressed() && !follower.isBusy()) {
                 endgame = follower.pathBuilder()
                         .addPath(new BezierLine(follower.getPose(), endgamePose))
                         .setLinearHeadingInterpolation(follower.getHeading(), endgamePose.getHeading())
                         .build();
                 follower.followPath(endgame, true);
             }
-            if (gamepad2.circleWasPressed()) {
+            if (gamepad2.triangleWasPressed()) {
                 follower.breakFollowing();
             }
             //endregion
@@ -756,27 +746,24 @@ public class MainRedOpMode extends LinearOpMode
             }
 
             if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
-                tuKf += 0.002;
-                lastTriggered = runtime.milliseconds();
-//                flyHoodLock = !flyHoodLock;
+                //    pidKd += 0.00002;
+                //lastTriggered = runtime.milliseconds();
+                flyHoodLock = !flyHoodLock;
             }
-            if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
-                tuKf -= 0.002;
-                lastTriggered = runtime.milliseconds();
-                //flyHoodLock = !flyHoodLock;
-            }
+            //if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
+            //   pidKd -= 0.00002;
+            //   lastTriggered = runtime.milliseconds();
+            //flyHoodLock = !flyHoodLock;
+            //}
             //endregion
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.addData("last position", StateVars.lastPose);
-            telemetry.addData("FW cmdVel", "%.0f", flywheel.commandedVelocity);
-            telemetry.addData("FW measVel", "%.0f", flywheel.lastMeasuredVelocity);
-            telemetry.addData("FW power", "%.3f", fly1.getPower());
-            telemetry.addData("FW voltage", "%.2f", flywheel.voltageFiltered);
-            telemetry.addData("pidKf", "%.7f", tuKf);
-            telemetry.addData("Vision Corr (deg)", "%.2f", visionCorrectionDeg);
-            telemetry.addData("Tag Bearing", targetFound ? desiredTag.ftcPose.bearing : 0);
+            telemetry.addData("avg looptime", runtime.milliseconds()/loopNum);
 
+            telemetry.addData("velocity 1", fly1.getVelocity());
+            telemetry.addData("velocity 2", fly2.getVelocity());
+            telemetry.addData("LAST ERROR", spindexer.lastError);
             telemetry.update();
         }
     }
@@ -809,112 +796,33 @@ public class MainRedOpMode extends LinearOpMode
         backRightDrive.setPower(backRightPower);
     }
 
-    //region SPINDEXER HELPERS
-    public void spinClock() {
-        prevSpindexerIndex = spindexerIndex;
-        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
-        spindexerIndex = (spindexerIndex - 2 + SPINDEXER_POSITIONS.length) % SPINDEXER_POSITIONS.length;
-        spinBallLED();
-    }
-    public void spinCounterClock() {
-        prevSpindexerIndex = spindexerIndex;
-        spindexerIndex += spindexerIndex % 2 != 0 ? 1 : 0;
-        spindexerIndex = (spindexerIndex + 2) % SPINDEXER_POSITIONS.length;
-        spinBallLED();
-    }
-    private void updateSpindexerPID(double targetBaseAngle, double dt) {
-        if (!spindexerPidArmed) {
-            lastError = 0;
-            lastFilteredD = 0;
-            integral = 0;
-            spin1.setPower(0);
-            spin2.setPower(0);
-            spindexerPidArmed = true;
-            return;
-        }
-        double currentAngle = mapVoltageToAngle360(spinEncoder.getVoltage(), 0.01, 3.29);
-
-        // 1. Twin Target Logic
-        double targetB = (targetBaseAngle + 180.0) % 360.0;
-
-        double errorA = -angleError(targetBaseAngle, currentAngle);
-        double errorB = -angleError(targetB, currentAngle);
-
-        double finalError = (Math.abs(errorA) <= Math.abs(errorB)) ? errorA : errorB;
-
-        // 2. Integral Zone (Prevents windup, fixes "stopping short")
-        if (Math.abs(finalError) < 10.0) { // Only accumulate when close
-            integral += finalError * dt;
-        } else {
-            integral = 0;
-        }
-        integral = Range.clip(integral, -integralLimit, integralLimit);
-
-        // 3. Filtered Derivative (The Jitter Fixer)
-        double rawD = (finalError - lastError) / Math.max(dt, 1e-6);
-        // Low-pass filter: 80% old value, 20% new value.
-        // This smooths out the analog encoder "flicker".
-        double filteredD = (lastFilteredD * 0.8) + (rawD * 0.2);
-        lastFilteredD = filteredD;
-
-        // 4. Calculate PID Output
-        double pOut = pidKp * finalError;
-        double iOut = pidKi * integral;
-        double dOut = pidKd * filteredD;
-
-        // 5. Static Feedforward (The Friction Killer)
-        // Applies a constant "kick" to break friction whenever we aren't at the target
-        double fOut = 0;
-        if (Math.abs(finalError) > positionToleranceDeg) {
-            fOut = Math.signum(finalError) * pidKf;
-        }
-
-        double out = pOut + iOut + dOut + fOut;
-
-        // 6. Output Management
-        out = Range.clip(out, -1.0, 1.0);
-        if (Math.abs(out) < outputDeadband) out = 0.0;
-
-        // Stop and decay integral when inside tolerance
-        if (Math.abs(finalError) <= positionToleranceDeg) {
-            out = 0.0;
-            integral *= 0.2;
-        }
-
-        spin1.setPower(out);
-        spin2.setPower(out);
-
-        lastError = finalError;
-    }
-    //endregion
-
     //region COLOR AND ARTIFACT RELATED
-    private void spinBallLED(){
-        if(spindexerIndex % 2 == 0){
-            int avgIndex = (spindexerIndex + prevSpindexerIndex)/ 2;
-            if (avgIndex == 2) avgIndex = 5;
-            int ballIndex = 0;
-
-            if(avgIndex==1) ballIndex=2;
-//            else if(avgIndex==3) ballIndex=0;
-            else if(avgIndex==5) ballIndex=1;
-
-            ballIndex = (ballIndex - 1 + 3) % 3;
-
-            if(savedBalls[ballIndex]=='p') {
-                gamepad1.setLedColor(128,0,128,2000); //purple
-                gamepad2.setLedColor(128,0,128,2000); //purple
-            }
-            else if(savedBalls[ballIndex]=='g') {
-                gamepad1.setLedColor(0,128,0,2000); //green
-                gamepad2.setLedColor(0,128,0,2000); //green
-            }
-            else {
-                gamepad1.setLedColor(255,255,255,2000); //white
-                gamepad2.setLedColor(255,255,255,2000); //white
-            }
-        }
-    }
+//    private void spinBallLED(){
+//        if(spindexerIndex % 2 == 0){
+//            int avgIndex = (spindexerIndex + prevSpindexerIndex)/ 2;
+//            if (avgIndex == 2) avgIndex = 5;
+//            int ballIndex = 0;
+//
+//            if(avgIndex==1) ballIndex=2;
+    ////            else if(avgIndex==3) ballIndex=0;
+//            else if(avgIndex==5) ballIndex=1;
+//
+//            ballIndex = (ballIndex - 1 + 3) % 3;
+//
+//            if(savedBalls[ballIndex]=='p') {
+//                gamepad1.setLedColor(128,0,128,2000); //purple
+//                gamepad2.setLedColor(128,0,128,2000); //purple
+//            }
+//            else if(savedBalls[ballIndex]=='g') {
+//                gamepad1.setLedColor(0,128,0,2000); //green
+//                gamepad2.setLedColor(0,128,0,2000); //green
+//            }
+//            else {
+//                gamepad1.setLedColor(255,255,255,2000); //white
+//                gamepad2.setLedColor(255,255,255,2000); //white
+//            }
+//        }
+//    }
 
     private char getRealColor(){
         char c1 = getDetectedColor1(color1);
@@ -953,7 +861,7 @@ public class MainRedOpMode extends LinearOpMode
 
     private char getDetectedColor2(NormalizedColorSensor sensor){
         double dist = ((DistanceSensor) sensor).getDistance(DistanceUnit.CM);
-        telemetry.addData("Distance X", dist);
+        telemetry.addData("Distance Y", dist);
         if (Double.isNaN(dist) || dist > GlobalOffsets.colorSensorDist2) {
             return 'n';
         }
@@ -1130,40 +1038,6 @@ public class MainRedOpMode extends LinearOpMode
     }
     //endregion
 
-    //region STORED ARTIFACTS
-    private int slotFromIndex(int idx) {
-        switch (idx) {
-            case 1: return 2;
-            case 3: return 0;
-            case 5: return 1;
-            default: return -1;
-        }
-    }
-
-    private void clearBallAtIndex(int idx) {
-        int slot = slotFromIndex(idx);
-        if (slot != -1) {
-            savedBalls[slot] = 'n';
-            presentBalls[slot] = false;
-        }
-    }
-
-    private void setBallAtIndex(int idx, char color, boolean isPresent) {
-        if (idx == 0) {
-            savedBalls[0] = color;
-            presentBalls[0] = isPresent;
-        }
-        else if (idx == 2) {
-            savedBalls[1] = color;
-            presentBalls[1] = isPresent;
-        }
-        else if (idx == 4) {
-            savedBalls[2] = color;
-            presentBalls[2] = isPresent;
-        }
-    }
-    //endregion
-
     //region TURRET AND LOCALIZATION
 
     private double calcTuTarget(double robotX, double robotY, double robotHeadingRad) {
@@ -1238,12 +1112,5 @@ public class MainRedOpMode extends LinearOpMode
         return clamp(candidateDeg, -TURRET_LIMIT_DEG, TURRET_LIMIT_DEG);
     }
     //endregion
-
-    boolean hasEmptySlot() {
-        for (char c : savedBalls) {
-            if (c == 'n') return true;
-        }
-        return false;
-    }
     //endregion
 }

@@ -15,10 +15,11 @@ public class SpindexerController {
     private final AnalogInput spinEncoder;
 
     // Tuning constants
-    public static double Kp = 0.007, Ki = 0.0, Kd = 0.00062, Kf = 0.025;
+    public static double Kp = 0.0067, Ki = 0.0003, Kd = 0.00073, Kf = 0.01;
     public static double integralLimit = 4.0;
-    public static double positionToleranceDeg = 2.0;
-    public static double outputDeadband = 0.03;
+    public static double positionToleranceDeg = 0.2;
+    public static double outputDeadband = 0.02;
+    public static double tau = 0.03;
 
     public double globalOffset = 30.0;
 
@@ -31,7 +32,7 @@ public class SpindexerController {
     private double integral = 0.0;
     public double lastError = 0.0;
     private double lastFilteredD = 0.0;
-    private boolean isArmed = false;
+    public boolean isArmed = false;
 
     public char[] savedBalls = {'n', 'n', 'n'}; // n = none, g = green, etc.
     public boolean[] presentBalls = {false, false, false};
@@ -89,8 +90,11 @@ public class SpindexerController {
         currentIntegral = integral;
 
         // deriv with low pass filter
+        double alpha = Math.exp(-dt / tau);
+
         double rawD = (error - lastError) / Math.max(dt, 1e-6);
-        double d = (lastFilteredD * 0.85) + (rawD * 0.15);
+        double d = alpha * lastFilteredD + (1 - alpha) * rawD;
+
         lastFilteredD = d;
 
         // output
@@ -105,8 +109,8 @@ public class SpindexerController {
 
         // avoid jitter
         if (Math.abs(error) <= positionToleranceDeg) {
-            out = 0.0;
-            integral *= 0.2;
+            out *= 0.1;
+            integral *= 0.05;
         }
 
         spin1.setPower(out);
@@ -186,7 +190,7 @@ public class SpindexerController {
         int bestIndex = targetIndex;
         double minAbsError = 360.0;
 
-        for (int i = 0; i < SPINDEXER_POSITIONS.length; i++) {
+        for (int i = 0; i < SPINDEXER_POSITIONS.length; i+=2) {
             double baseTarget = SPINDEXER_POSITIONS[i] + GlobalOffsets.spindexerOffset;
 
             double errorNormal = Math.abs(angleError(baseTarget, currentAngle));
