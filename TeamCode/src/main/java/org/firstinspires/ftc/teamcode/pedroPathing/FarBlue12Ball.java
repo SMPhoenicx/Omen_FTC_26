@@ -210,7 +210,7 @@ public class FarBlue12Ball extends LinearOpMode {
         pickup3[0] = new Pose(58.25,7.76,Math.toRadians(180));
         pickup3[1] = new Pose(10.4,8.53,Math.toRadians(180));
 
-        shoot0 = new Pose(62.5,26.5,Math.toRadians(0));
+        shoot0 = new Pose(62.5,26.5,Math.toRadians(180));
         shoot1 = new Pose(58,19,Math.toRadians(180));
         movePoint = new Pose(35.5,18.5,Math.toRadians(90));
     }
