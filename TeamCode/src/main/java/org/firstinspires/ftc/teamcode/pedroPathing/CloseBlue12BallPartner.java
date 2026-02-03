@@ -207,7 +207,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         pickup1[2] = new Pose(48.083, 54.73,Math.toRadians(180));
 
         pickup2[0] = new Pose(39.06642541436464,50.75209944751381,Math.toRadians(180));
-        pickup2[1] = new Pose(18.632960773480665,64.68695359116022,Math.toRadians(152));
+        pickup2[1] = new Pose(18.632960773480665,66.68695359116022,Math.toRadians(152));
         pickup2[2] = new Pose(48.55110497237568,45.52872928176797,Math.toRadians(180));
 
         junoPose[0] = new Pose(18.38141376340592,58.21351254468639,Math.toRadians(145));
