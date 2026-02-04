@@ -613,8 +613,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                     subState++;
                 }
                 else if(!follower.isBusy()){
-//                    motifOn=false;
-//                    subState++;
+                    motifOn=false;
+                    subState++;
                 }
             }
             //endregion
