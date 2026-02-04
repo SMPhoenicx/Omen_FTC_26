@@ -36,6 +36,7 @@ import android.util.Size;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
+import com.pedropathing.math.Vector;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.lynx.LynxModule;
@@ -154,7 +155,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Turret Position
     private double tuPos = 0.0;
-    private static final double turretZeroDeg = 7;
+    private static final double turretZeroDeg = 8.1;
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
     //endregion
@@ -190,17 +191,18 @@ public class MainBlueOpMode extends LinearOpMode
     private double localizeTime = 0;
     //endregion
 
-    //region VARIANT VARS (Alliance Specific)x
+    //region VARIANT VARS (Alliance Specific)
     private static final double goalX = 0;
     private static final double goalY = 144;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(135.6, 8.27, Math.toRadians(0));
+    private static final Pose LOCALIZE_POSE = new Pose(135.6, 8.27, Math.toRadians(358.3));
     private Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     private static final double TAG_X = 14.3;
     private static final double TAG_Y = 130.0;
     //endregion
 
     private SpindexerController spindexer;
+    Vector velocity = new Vector(0,0);
 
     public int loopNum = 0;
     @Override
@@ -286,13 +288,14 @@ public class MainBlueOpMode extends LinearOpMode
 
         //region SUBSYSTEM INITIALIZATION
         flywheel = new FlywheelPIDController(
-              hardwareMap.get(DcMotorEx.class, "fly1"),
-             hardwareMap.get(DcMotorEx.class, "fly2")
+                hardwareMap.get(DcMotorEx.class, "fly1"),
+                hardwareMap.get(DcMotorEx.class, "fly2")
         );
         flywheel.teleopMultiplier = 0.88;
 
         spindexer = new SpindexerController(spin1, spin2, spinEncoder);
         //endregion
+
         //region PRE-START
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(StateVars.lastPose);
@@ -330,6 +333,7 @@ public class MainBlueOpMode extends LinearOpMode
 
             follower.update();
             Pose robotPose = follower.getPose();
+            velocity = follower.getVelocity();
             //endregion
 
             //region TRACKING AND LOCALIZATION
@@ -418,12 +422,12 @@ public class MainBlueOpMode extends LinearOpMode
                     //    This amplifies correction if robot is far from the diagonal.
                     double signedDist = (rx + ry) - 144.0; // >0 means y > 144 - x (your "right" side)
                     double maxDistForScale = 120.0; // max expected magnitude (tune)
-                    double kScale = 0.3; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
+                    double kScale = 0.5; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
                     double lateralScale = 1.0 + kScale * (Math.max(-maxDistForScale, Math.min(maxDistForScale, signedDist)) / maxDistForScale);
-
+                    // Clamp so scale stays reasonable:
                     lateralScale = Math.max(0.5, Math.min(2.0, lateralScale));
 
-                   double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
+                    double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
 
                     // Proportional assist
                     double pAssist = Math.max(
@@ -446,10 +450,22 @@ public class MainBlueOpMode extends LinearOpMode
             //endregion
 
             //region AUTO FLYSPEED/ANGLE
-            //dist calc from goal to bot
+            //position and range
             double dx = goalX - robotPose.getX();
             double dy = goalY - robotPose.getY();
             double odomRange = Math.hypot(dx, dy);
+
+            //velocity
+            double velX = velocity.getXComponent();
+            double velY = velocity.getYComponent();
+
+            //finds the unit vector in the direction of the goal
+            double unitVectorX = dx / odomRange;
+            double unitVectorY = dy / odomRange;
+
+            //gives you the velocity in the direction of the goal (radial velocity)
+            double radVel = (velX * unitVectorX) + (velY * unitVectorY);
+
 
             //smooth range so values rnt erratic
             if (!isInitialized) {
@@ -547,8 +563,8 @@ public class MainBlueOpMode extends LinearOpMode
 
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
-            if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 8) && (Math.abs(flyDiff) < 50)) {
-                recoilOffset = flyDiff*2;
+            if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 5) && (Math.abs(flyDiff) < 50)) {
+                recoilOffset = flyDiff*2.2;
             }
 
             double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
@@ -563,13 +579,11 @@ public class MainBlueOpMode extends LinearOpMode
                 if (intakeOn) {
                     SpindexerController.Kp = 0.0063;
                     SpindexerController.Kd = 0.0007;
-                    SpindexerController.Kf = 0.018;
                     SpindexerController.tau = 0.05;
                     flywheel.Kd = 0.0007;
                 } else {
                     SpindexerController.Kp = 0.007;
                     SpindexerController.Kd = 0.00073;
-                    SpindexerController.Kf = 0.01;
                     SpindexerController.tau = 0.035;
                     flywheel.Kd = 0.0003;
                 }
@@ -643,7 +657,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             spindexer.update(dtSec);
-           //endregion
+            //endregion
 
             //region GOAL TRACKING
             if (trackingOn) {
@@ -732,9 +746,9 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
-            //    pidKd += 0.00002;
+                //    pidKd += 0.00002;
                 //lastTriggered = runtime.milliseconds();
-               flyHoodLock = !flyHoodLock;
+                flyHoodLock = !flyHoodLock;
             }
             //if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
             //   pidKd -= 0.00002;
@@ -790,7 +804,7 @@ public class MainBlueOpMode extends LinearOpMode
 //            int ballIndex = 0;
 //
 //            if(avgIndex==1) ballIndex=2;
-////            else if(avgIndex==3) ballIndex=0;
+    ////            else if(avgIndex==3) ballIndex=0;
 //            else if(avgIndex==5) ballIndex=1;
 //
 //            ballIndex = (ballIndex - 1 + 3) % 3;

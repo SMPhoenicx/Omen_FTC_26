@@ -53,8 +53,8 @@ public class SpindexerController {
      */
     public void update(double dt) {
         if (isRapidFire) {
-            spin1.setPower(0.93);
-            spin2.setPower(0.93);
+            spin1.setPower(0.8);
+            spin2.setPower(0.8);
             return;
         }
 
