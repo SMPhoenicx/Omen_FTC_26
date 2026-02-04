@@ -142,7 +142,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private double pidKp = 0.004;
     private double pidKi = 0.0;
     private double pidKd = 0.00035;//0.00065
-    private double pidKf = 0.015;
+    private double pidKf = 0.022;
 
     // Spindexer PID State
     private double integral = 0.0;
@@ -189,6 +189,7 @@ public class CloseBlue12Ball extends LinearOpMode {
     private final double tuToleranceDeg = 2.0;
     private final double tuDeadband = 0.03;
     private boolean turretAtTarget = false;
+    private static final double TURRET_LIMIT_DEG = 150.0;
 
     // Turret Position
     private double tuPos = 0;
@@ -216,7 +217,7 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         shoot1 = new Pose(57.5,98.4,Math.toRadians(180));
 //        shoot0 = new Pose(60,119,Math.toRadians(150));
-        shoot0 = new Pose(54.43,123.77,Math.toRadians(130));
+        shoot0 = new Pose(54.43,123.77,Math.toRadians(150));
         shoot3 = new Pose(61.32044198895028,116.9171270718232,Math.toRadians(180));
         movePoint = new Pose(31,69.6,Math.toRadians(90));
     }
@@ -229,7 +230,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                 .addParametricCallback(0.75, ()-> {
                     follower.setMaxPower(0.9);
                 } )
-                .addParametricCallback(0.87,()-> shootReady=true)
+//                .addParametricCallback(0.87,()-> shootReady=true)
 //                .setBrakingStrength(0.6)
                 .build();
         pickupPath1 = follower.pathBuilder()
@@ -445,11 +446,15 @@ public class CloseBlue12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = 32.5;
+                            tuPos = 50;
                             autoShootOn = true;
                             shootingState=0;
+                            timeout = runtime.milliseconds()+500;
 
                             subState++;
+                        }
+                        else if(subState==3){
+                            shootReady = true;
                         }
                         //AUTO SHOOTING is subState 3, resets subState, and increments pathState
                         break;
@@ -468,7 +473,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(gatePath,false);
-                            tuPos = -78;
+                            tuPos = -75;
                             gateCutoff = true;
 
                             timeout = runtime.milliseconds()+1400;
@@ -676,7 +681,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
                 spindexerAtTarget=false;
-                timeout = runtime.milliseconds() + 300;
+//                timeout = runtime.milliseconds() + 300;
 
                 shootingState++;
             }
@@ -697,7 +702,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         spin2.setPower(0.8);
                         cutoffSpinPID = true;
 
-                        timeout=runtime.milliseconds()+1300;
+                        timeout=runtime.milliseconds()+1200;
                         if(pathState==3) timeout += 1000;
                         shootingState++;
                     }
@@ -717,6 +722,7 @@ public class CloseBlue12Ball extends LinearOpMode {
 
             //region FLYWHEEL
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
+//            flySpeed = 0;
             flywheel.updateFlywheelPID(
                     flySpeed,
                     dtSec,
@@ -732,6 +738,7 @@ public class CloseBlue12Ball extends LinearOpMode {
             //endregion
 
             //region TURRET
+//            tuPos = applyTurretLimitWithWrap(tuPos);
             updateTurretPID(tuPos, dtSec);
             //endregion
 
@@ -771,6 +778,30 @@ public class CloseBlue12Ball extends LinearOpMode {
     }
 
     //region HELPER METHODS
+    private double applyTurretLimitWithWrap(double desiredDeg) {
+        // Always reason in [-180, 180]
+        desiredDeg = normalizeDeg180(desiredDeg);
+
+        // Where the turret actually is right now (also [-180, 180])
+        double currentDeg = getTurretAngleDeg();
+
+        // Shortest signed rotation from current to desired (e.g. +20, -30, etc.)
+        double errorToDesired = normalizeDeg180(desiredDeg - currentDeg);
+
+        // "Ideal" next target if we perfectly matched desired in one step
+        double candidateDeg = currentDeg + errorToDesired;
+
+        // Hard safety clamp to keep off the wires
+        return clamp(candidateDeg, -TURRET_LIMIT_DEG, TURRET_LIMIT_DEG);
+    }
+    private double normalizeDeg180(double deg) {
+        deg = (deg + 180) % 360;
+        if (deg < 0) deg += 360;
+        return deg - 180;
+    }
+    private double getTurretAngleDeg() {
+        return normalizeDeg180(mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29));
+    }
     private char getRealColor(){
         char c1 = getDetectedColor1(color1);
         char c2 = getDetectedColor2(color2);

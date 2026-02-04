@@ -207,13 +207,13 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         pickup1[2] = new Pose(48.083, 54.73,Math.toRadians(180));
 
         pickup2[0] = new Pose(39.06642541436464,50.75209944751381,Math.toRadians(180));
-        pickup2[1] = new Pose(18.632960773480665,66.68695359116022,Math.toRadians(152));
+        pickup2[1] = new Pose(18.632960773480665,66.68695359116022,Math.toRadians(160));
         pickup2[2] = new Pose(48.55110497237568,45.52872928176797,Math.toRadians(180));
 
-        junoPose[0] = new Pose(18.38141376340592,58.21351254468639,Math.toRadians(145));
-        junoPose[1] = new Pose(14.11878453038675,53.790055248618806,Math.toRadians(145));
-        junoPose[2] = new Pose(21.649171270718252,59.09668508287294,Math.toRadians(145));
-        junoPose[3] = new Pose(14.121546961325976,60.6767955801105,Math.toRadians(145));
+        junoPose[0] = new Pose(18.38141376340592,58.21351254468639,Math.toRadians(90));
+        junoPose[1] = new Pose(14.11878453038675,53.790055248618806,Math.toRadians(90));
+        junoPose[2] = new Pose(21.649171270718252,59.09668508287294,Math.toRadians(90));
+        junoPose[3] = new Pose(14.121546961325976,60.6767955801105,Math.toRadians(90));
 
         pickup3[0] = new Pose(46.44,81.52,Math.toRadians(180));
         pickup3[1] = new Pose(17.5,84,Math.toRadians(180));
@@ -488,7 +488,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                             subState++;
                         }
                         else if(subState==1){
-                            timeout = runtime.milliseconds() + 300;
+                            timeout = runtime.milliseconds() + 100;
                             subState++;
                         }
                         else if(subState==2){
@@ -715,14 +715,14 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
                 if(shootingState==1){
                     transOn = true;
-                    if(turretAtTarget){
-                        spin1.setPower(0.93);
-                        spin2.setPower(0.93);
+//                    if(turretAtTarget){
+                        spin1.setPower(0.8);
+                        spin2.setPower(0.8);
                         cutoffSpinPID = true;
 
-                        timeout=runtime.milliseconds()+900;
+                        timeout=runtime.milliseconds()+1300;
                         shootingState++;
-                    }
+//                    }
                 }
                 else if(shootingState==2){
                     savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
@@ -756,7 +756,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             //endregion
 
             //region TURRET
-            updateTurretPID(tuPos, dtSec);
+//            updateTurretPID(tuPos, dtSec);
             //endregion
 
             //region TRANSFER
