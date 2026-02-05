@@ -419,7 +419,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             follower.update();
             StateVars.lastPose = follower.getPose();
 
-            if(pathState==1) pathState = 2;
+//            if(pathState==1) pathState = 2;
 
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
