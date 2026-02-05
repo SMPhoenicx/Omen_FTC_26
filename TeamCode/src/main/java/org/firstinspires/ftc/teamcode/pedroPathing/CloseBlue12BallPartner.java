@@ -19,6 +19,7 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -206,12 +207,14 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         pickup1[1] = new Pose(10,58.36,Math.toRadians(180));
         pickup1[2] = new Pose(48.083, 54.73,Math.toRadians(180));
 
-        pickup2[0] = new Pose(39.06642541436464,50.75209944751381,Math.toRadians(180));
-        pickup2[1] = new Pose(18.632960773480665,66.68695359116022,Math.toRadians(160));
+        pickup2[0] = new Pose(39.06642541436464,53.75209944751381,Math.toRadians(180));
+        pickup2[1] = new Pose(18.632960773480665,68.18695359116022,Math.toRadians(170));
         pickup2[2] = new Pose(48.55110497237568,45.52872928176797,Math.toRadians(180));
 
-        junoPose[0] = new Pose(18.38141376340592,58.21351254468639,Math.toRadians(90));
-        junoPose[1] = new Pose(14.11878453038675,53.790055248618806,Math.toRadians(90));
+//        junoPose[0] = new Pose(18.38141376340592,58.21351254468639,Math.toRadians(90));
+//        junoPose[1] = new Pose(14.11878453038675,53.790055248618806,Math.toRadians(90));
+        junoPose[0] = new Pose(18.646607133571667,57.15273906402341,Math.toRadians(90));
+        junoPose[1] = new Pose(13.853591160221004,50.3425414364641,Math.toRadians(90));
         junoPose[2] = new Pose(21.649171270718252,59.09668508287294,Math.toRadians(90));
         junoPose[3] = new Pose(14.121546961325976,60.6767955801105,Math.toRadians(90));
 
@@ -250,7 +253,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
 //                    follower.setMaxPower(0.36);
                     intakeOn = true;
                 })
-                .setTimeoutConstraint(1000)
+//                .setTimeoutConstraint(500)
                 .build();
         junoPath[0] = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup2[1],junoPose[0],junoPose[1]))
@@ -292,7 +295,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                 .addPath(new BezierLine(pickup3[1],shoot3))
                 .setConstraints(shootConstraints)
                 .setLinearHeadingInterpolation(pickup3[1].getHeading(),shoot3.getHeading())
-                .addParametricCallback(0.983,()-> shootReady=true)
+                .addParametricCallback(0.988,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1,movePoint))
@@ -354,8 +357,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         color2 = hardwareMap.get(NormalizedColorSensor.class,"Color 2");
 
         //DIRECTIONS
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -415,6 +418,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         while(opModeIsActive()){
             follower.update();
             StateVars.lastPose = follower.getPose();
+
+//            if(pathState==1) pathState = 2;
 
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
@@ -488,22 +493,24 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                             subState++;
                         }
                         else if(subState==1){
-                            timeout = runtime.milliseconds() + 100;
+//                            timeout = runtime.milliseconds() + 100;
                             subState++;
                         }
                         else if(subState==2){
+                            follower.setMaxPower(1);
                             follower.followPath(junoPath[0],true);
 
                             subState++;
                         }
                         else if(subState==3){
+                            follower.setMaxPower(1);
                             follower.followPath(junoPath[1],true);
 //                            follower.setMaxPower(0.8);
 
                             subState++;
                         }
                         else if(subState==4){
-                            timeout = runtime.milliseconds() + 150;
+//                            timeout = runtime.milliseconds() + 150;
                             subState++;
                         }
                         //INTAKE is subState 0-4
@@ -756,12 +763,12 @@ public class CloseBlue12BallPartner extends LinearOpMode {
             //endregion
 
             //region TURRET
-//            updateTurretPID(tuPos, dtSec);
+            updateTurretPID(tuPos, dtSec);
             //endregion
 
             //region TRANSFER
             if(transOn){
-                trans.setPower(1);
+                trans.setPower(0.7);
             }
             else{
                 trans.setPower(0);
