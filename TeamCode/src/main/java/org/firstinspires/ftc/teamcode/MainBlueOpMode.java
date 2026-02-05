@@ -112,8 +112,8 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Vision-based turret correction & Tuning
     private double visionCorrectionDeg = 0.0;
-    private static final double VISION_CORRECTION_GAIN = 0.1;
-    private static final double VISION_P_GAIN = 0.3;
+    private static final double VISION_CORRECTION_GAIN = 0;
+    private static final double VISION_P_GAIN = 0;
     private static final double MAX_VISION_CORRECTION_DEG = 10.0;
     private static final double VISION_MIN_RANGE = 20.0;
     private static final double VISION_MAX_RANGE = 120.0;
@@ -155,7 +155,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     // Turret Position
     private double tuPos = 0.0;
-    private static final double turretZeroDeg = 8.1;
+    private static final double turretZeroDeg = 8.5;
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
     //endregion
@@ -166,7 +166,8 @@ public class MainBlueOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1026, 1059, 1083, 1129, 1143, 1155, 1162, 1219, 1251, 1261, 1267, 1256, 1283, 1297, 1370, 1393, 1420};
+    private static final double[] FLY_SPEEDS =          {1005, 1023, 1050, 1076, 1121, 1139, 1149, 1155, 1210, 1242, 1260, 1265, 1254, 1276, 1290, 1368, 1391, 1418};
+    private static final double[] AIR_TIME =   {2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
     private static final double ALPHA = 0.8;
@@ -195,7 +196,7 @@ public class MainBlueOpMode extends LinearOpMode
     private static final double goalX = 0;
     private static final double goalY = 144;
     private static final int DESIRED_TAG_ID = 20; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(135.6, 8.27, Math.toRadians(358.3));
+    private static final Pose LOCALIZE_POSE = new Pose(144-9.125, 8.625, Math.toRadians(358.3));
     private Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     private static final double TAG_X = 14.3;
     private static final double TAG_Y = 130.0;
@@ -204,7 +205,7 @@ public class MainBlueOpMode extends LinearOpMode
     private SpindexerController spindexer;
     Vector velocity = new Vector(0,0);
 
-    public int loopNum = 0;
+    double shotTime = 0;
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -320,7 +321,6 @@ public class MainBlueOpMode extends LinearOpMode
         //endregion
 
         while (opModeIsActive()) {
-            loopNum++;
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
             double nowMs = runtime.milliseconds();
@@ -393,7 +393,6 @@ public class MainBlueOpMode extends LinearOpMode
                 double tagRange = desiredTag.ftcPose.range;
                 adjustDecimation(tagRange);
 
-                telemetry.addData("Target ID", desiredTag.id);
                 telemetry.addData("Tag Range", "%.1f inches", tagRange);
             }
             //endregion
@@ -429,7 +428,7 @@ public class MainBlueOpMode extends LinearOpMode
 
                     double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
 
-                    // Proportional assist
+                    // Proportional assistgain
                     double pAssist = Math.max(
                             -2.5,
                             Math.min(2.5, VISION_P_GAIN * scaledCorrectedBearingDeg)
@@ -463,16 +462,30 @@ public class MainBlueOpMode extends LinearOpMode
             double unitVectorX = dx / odomRange;
             double unitVectorY = dy / odomRange;
 
+            double totalSpeed = velocity.getMagnitude();
+
             //gives you the velocity in the direction of the goal (radial velocity)
             double radVel = (velX * unitVectorX) + (velY * unitVectorY);
 
+            double adjustedRange = odomRange;
+            if (Math.abs(radVel) > 5.0) { // threshold of 5 inches/second
+                shotTime = interpolate(odomRange, ODOM_RANGE_SAMPLES, AIR_TIME) / 4.0;
+                double radialDisplacement = radVel * shotTime;
+                adjustedRange = odomRange - radialDisplacement;
+            }
+
+            //velocity perpendicular to the goal.
+            double tanVel = Math.sqrt(
+                    totalSpeed*totalSpeed -
+                            radVel * radVel
+            );
 
             //smooth range so values rnt erratic
             if (!isInitialized) {
-                smoothedRange = odomRange;
+                smoothedRange = adjustedRange;
                 isInitialized = true;
             } else {
-                smoothedRange = smooth(odomRange, smoothedRange);
+                smoothedRange = smooth(adjustedRange, smoothedRange);
             }
 
             // interpolate between measured values
@@ -482,10 +495,13 @@ public class MainBlueOpMode extends LinearOpMode
                 hoodAngle = Math.max(hoodAngle, -140); //clamp to prevent it going too high
             }
 
-            telemetry.addData("Odom Range", "%.1f inches", smoothedRange);
+            telemetry.addData("Odom Range", "%.1f inches", odomRange);
+            telemetry.addData("Adjusted Range", "%.1f inches", smoothedRange);
             //endregion
 
             //region COLOR SENSOR AND BALL TRACKING
+
+            //change this
             if (intakeOn) {
                 char detectedColor = getRealColor();
                 boolean present = isBallPresent();
@@ -559,12 +575,12 @@ public class MainBlueOpMode extends LinearOpMode
                 hoodOffset += 5;
             }
 
-            double recoilOffset = 0.0;
+            double recoilOffset = 0;
 
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
-            if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 5) && (Math.abs(flyDiff) < 50)) {
-                recoilOffset = flyDiff*2.2;
+            if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 40)) {
+                recoilOffset = flyDiff*0;
             }
 
             double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
@@ -616,7 +632,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             //Rapid Fire stuff
-            if (gamepad1.dpadUpWasPressed()) {
+            if (gamepad1.right_trigger > 0.5 && trackingOn && runtime.milliseconds() - lastTriggered > 150) {
                 spindexer.setRapidFire(true);
                 rapidFireStartTime = runtime.milliseconds();
                 tranOn = true;
@@ -665,7 +681,7 @@ public class MainBlueOpMode extends LinearOpMode
                     tuPos = turretZeroDeg;
                 }
                 else {
-                    tuPos = calcTuTarget(
+                    tuPos = calcTuTarget(velX, velY,
                             robotPose.getX(),
                             robotPose.getY(),
                             robotPose.getHeading()
@@ -745,11 +761,11 @@ public class MainBlueOpMode extends LinearOpMode
                 moveRobot(drive, strafe, turn);
             }
 
-            if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
-                //    pidKd += 0.00002;
-                //lastTriggered = runtime.milliseconds();
-                flyHoodLock = !flyHoodLock;
-            }
+//            if (gamepad1.right_trigger > 0.5&& runtime.milliseconds() - lastTriggered > 150) {
+//                //    pidKd += 0.00002;
+//                //lastTriggered = runtime.milliseconds();
+//                flyHoodLock = !flyHoodLock;
+//            }
             //if (gamepad1.left_trigger > 0.5 && runtime.milliseconds() - lastTriggered > 150) {
             //   pidKd -= 0.00002;
             //   lastTriggered = runtime.milliseconds();
@@ -759,10 +775,6 @@ public class MainBlueOpMode extends LinearOpMode
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.addData("last position", StateVars.lastPose);
-            telemetry.addData("avg looptime", runtime.milliseconds()/loopNum);
-
-            telemetry.addData("velocity 1", fly1.getVelocity());
-            telemetry.addData("velocity 2", fly2.getVelocity());
             telemetry.addData("LAST ERROR", spindexer.lastError);
             telemetry.update();
         }
@@ -1028,8 +1040,6 @@ public class MainBlueOpMode extends LinearOpMode
         }
 
         aprilTag.setDecimation(newDecimation);
-        telemetry.addData("Decimation: ", "%d", newDecimation);
-
     }
     private double normalizeDeg180(double deg) {
         deg = (deg + 180) % 360;
@@ -1040,11 +1050,17 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region TURRET AND LOCALIZATION
 
-    private double calcTuTarget(double robotX, double robotY, double robotHeadingRad) {
+    private double calcTuTarget(double velX, double velY, double robotX, double robotY, double robotHeadingRad) {
         double dx = goalX - robotX;
         double dy = goalY - robotY;
 
-        double headingToGoal = Math.toDegrees(Math.atan2(dy, dx));
+        double futureRobotX = robotX + (velX * shotTime);
+        double futureRobotY = robotY + (velY * shotTime);
+
+        double futureDx = goalX - futureRobotX;
+        double futureDy = goalY - futureRobotY;
+
+        double headingToGoal = Math.toDegrees(Math.atan2(futureDy, futureDx));
         double robotHeading  = Math.toDegrees(robotHeadingRad);
 
         //actual turret angle needed

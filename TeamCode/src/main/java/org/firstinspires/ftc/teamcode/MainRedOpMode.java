@@ -147,10 +147,10 @@ public class MainRedOpMode extends LinearOpMode
     // PID State
     private double tuIntegral = 0.0;
     private double tuLastError = 0.0;
-    private double tuIntegralLimit = 500.0;
+    private double tuIntegralLimit = 90.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 2.0;
+    private final double tuToleranceDeg = 1.5;
     private final double tuDeadband = 0.02;
 
     // Turret Position
@@ -166,7 +166,7 @@ public class MainRedOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1026, 1059, 1083, 1129, 1143, 1155, 1162, 1215, 1251, 1261, 1267, 1256, 1283, 1297, 1370, 1393, 1420};
+    private static final double[] FLY_SPEEDS =          {1005, 1023, 1050, 1076, 1121, 1140, 1150, 1156, 1212, 1238, 1252, 1258, 1254, 1269, 1284, 1368, 1391, 1418};
     private static final double[] AIR_TIME =   {2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
@@ -196,7 +196,7 @@ public class MainRedOpMode extends LinearOpMode
     private static final double goalX = 144.0;
     private static final double goalY = 144.0;
     private static final int DESIRED_TAG_ID = 24; //blue=20, red=24
-    private static final Pose LOCALIZE_POSE = new Pose(8.34, 8.28, Math.toRadians(181.3));
+    private static final Pose LOCALIZE_POSE = new Pose(9.125, 8.625, Math.toRadians(181));
     Pose endgamePose = new Pose(40, 33, Math.toRadians(90));
     static final double TAG_X = 129.7;
     static final double TAG_Y = 130.0;
@@ -277,8 +277,8 @@ public class MainRedOpMode extends LinearOpMode
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -579,12 +579,12 @@ public class MainRedOpMode extends LinearOpMode
                 hoodOffset += 5;
             }
 
-            double recoilOffset = 0.0;
+            double recoilOffset = 0;
 
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
             if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 40)) {
-                recoilOffset = flyDiff*0.6;
+                recoilOffset = flyDiff*0.15;
             }
             telemetry.addData("FLY DIFF", flyDiff);
             telemetry.addData("RECOIL", recoilOffset);
@@ -787,6 +787,9 @@ public class MainRedOpMode extends LinearOpMode
             telemetry.addData("velocity 1", fly1.getVelocity());
             telemetry.addData("velocity 2", fly2.getVelocity());
             telemetry.addData("LAST ERROR", spindexer.lastError);
+            telemetry.addData("Turret Integral", tuIntegral);
+            telemetry.addData("Turret Integral", tuLastError);
+
             telemetry.update();
         }
     }
