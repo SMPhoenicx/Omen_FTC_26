@@ -19,6 +19,7 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -356,8 +357,8 @@ public class CloseBlue12Ball extends LinearOpMode {
         color2 = hardwareMap.get(NormalizedColorSensor.class,"Color 2");
 
         //DIRECTIONS
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -698,8 +699,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                 if(shootingState==1){
                     transOn = true;
                     if(turretAtTarget){
-                        spin1.setPower(0.8);
-                        spin2.setPower(0.8);
+                        spin1.setPower(0.85);
+                        spin2.setPower(0.85);
                         cutoffSpinPID = true;
 
                         timeout=runtime.milliseconds()+1200;
@@ -1031,6 +1032,10 @@ public class CloseBlue12Ball extends LinearOpMode {
         // clamp to [-1,1] and apply deadband
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < tuDeadband) out = 0.0;
+
+        if(targetAngle>10&&angle<-95){
+            out = 1;
+        }
 
         // if within tolerance, zero outputs and decay integrator to avoid bumping
         if (Math.abs(error) <= tuToleranceDeg) {
