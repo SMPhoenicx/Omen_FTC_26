@@ -19,6 +19,7 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -52,7 +53,7 @@ public class CloseRed12Ball extends LinearOpMode {
 
     //region PEDRO VARS
     private Follower follower;
-    private Pose startPose, shoot1, movePoint;
+    private Pose startPose, shoot1, movePoint, shoot0, shoot3;
     private Pose[] pickup1 = new Pose[3];
     private Pose[] pickup2 = new Pose[3];
     private Pose[] pickup3 = new Pose[3];
@@ -140,14 +141,14 @@ public class CloseRed12Ball extends LinearOpMode {
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
     private double pidKp = 0.004;
-    private double pidKi = 0.0;
+    private double pidKi = 0.001;
     private double pidKd = 0.00035;//0.00065
-    private double pidKf = 0.006;
+    private double pidKf = 0.022;
 
     // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 4.0;
+    private double integralLimit = 6.0;
     private double pidLastTimeMs = 0.0;
     private double lastFilteredD = 0.0;
 
@@ -183,28 +184,29 @@ public class CloseRed12Ball extends LinearOpMode {
     // PID State
     private double tuIntegral = 0.0;
     private double tuLastError = 0.0;
-    private double tuIntegralLimit = 500.0;
+    private double tuIntegralLimit = 110.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 2.0;
+    private final double tuToleranceDeg = 1.5;
     private final double tuDeadband = 0.03;
     private boolean turretAtTarget = false;
+    private static final double TURRET_LIMIT_DEG = 150.0;
 
     // Turret Position
     private double tuPos = 0;
     //endregion
-    private final PathConstraints shootConstraints = new PathConstraints(0.99, 100, 0.75, 0.8);
+    private final PathConstraints shootConstraints = new PathConstraints(0.99, 500, 0.65, 0.8);
     private final PathConstraints gateConstraints = new PathConstraints(0.99, 100, 0.9, 1);
 
     public void createPoses(){
         startPose = new Pose(144-19.9,123.5,Math.toRadians(180-54));
 
         //0 is control point, 1 is endpoint
-        pickup1[0] = new Pose(144-46.44,81.52,Math.toRadians(0));
+        pickup1[0] = new Pose(144-61.82,76.75,Math.toRadians(0));
         pickup1[1] = new Pose(144-17.5,84,Math.toRadians(0));
 
-        gatePose[0] = new Pose(144-25.82,77.24,Math.toRadians(90));
-        gatePose[1] = new Pose(144-14.62,75.3,Math.toRadians(90));//45.5 3
+        gatePose[0] = new Pose(144-29.82,77.24,Math.toRadians(90));
+        gatePose[1] = new Pose(144-14.62,75.3,Math.toRadians(90));//14.62 75.3
 
         pickup2[0] = new Pose(144-63.97,54.52,Math.toRadians(0));
         pickup2[1] = new Pose(144-10,58.36,Math.toRadians(0));
@@ -215,23 +217,27 @@ public class CloseRed12Ball extends LinearOpMode {
         pickup3[1] = new Pose(144-10,35.58,Math.toRadians(0));
 
         shoot1 = new Pose(144-57.5,98.4,Math.toRadians(0));
+//        shoot0 = new Pose(60,119,Math.toRadians(150));
+        shoot0 = new Pose(144-54.43,123.77,Math.toRadians(180-110));
+        shoot3 = new Pose(144-61.32044198895028,116.9171270718232,Math.toRadians(0));
         movePoint = new Pose(144-31,69.6,Math.toRadians(90));
     }
 
     public void createPaths(){
         scorePath0 = follower.pathBuilder()
-                .addPath(new BezierLine(startPose,shoot1))
+                .addPath(new BezierLine(startPose,shoot0))
                 .setConstraints(shootConstraints)
-                .setLinearHeadingInterpolation(startPose.getHeading(),shoot1.getHeading(), 0.65)
+                .setLinearHeadingInterpolation(startPose.getHeading(),shoot0.getHeading(), 0.5)
                 .addParametricCallback(0.75, ()-> {
                     follower.setMaxPower(0.9);
                 } )
-                .addParametricCallback(0.87,()-> shootReady=true)
+//                .addParametricCallback(0.87,()-> shootReady=true)
+//                .setBrakingStrength(0.6)
                 .build();
         pickupPath1 = follower.pathBuilder()
-                .addPath(new BezierCurve(shoot1,pickup1[0],pickup1[1]))
-                .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.15,()->{
+                .addPath(new BezierCurve(shoot0,pickup1[0],pickup1[1]))
+                .setLinearHeadingInterpolation(shoot0.getHeading(),pickup1[1].getHeading(),0.2)
+                .addParametricCallback(0.42,()->{
                     follower.setMaxPower(0.3);
                     intakeOn = true;
                     pidKp -= 0.002;
@@ -270,20 +276,23 @@ public class CloseRed12Ball extends LinearOpMode {
                 .addPath(new BezierLine(gatePose[1],shoot1))
                 .setConstraints(shootConstraints)
                 .setLinearHeadingInterpolation(gatePose[1].getHeading(),shoot1.getHeading())
-                .addParametricCallback(0.983,()-> shootReady=true)
+//                .addParametricCallback(0.983,()-> shootReady=true)
+                .addParametricCallback(0.984,()-> shootReady=true)
                 .build();
         scorePath2 = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup2[1],pickup2[2],shoot1))
                 .setConstraints(shootConstraints)
                 .setTranslationalConstraint(1.5)
                 .setConstantHeadingInterpolation(shoot1.getHeading())
-                .addParametricCallback(0.986,()-> shootReady=true)
+//                .addParametricCallback(0.986,()-> shootReady=true)
+                .addParametricCallback(0.99,()-> shootReady=true)
                 .build();
         scorePath3 = follower.pathBuilder()
-                .addPath(new BezierLine(pickup3[1],shoot1))
+                .addPath(new BezierLine(pickup3[1],shoot3))
                 .setConstraints(shootConstraints)
+                .setBrakingStrength(0.5)
                 .setTranslationalConstraint(1.5)
-                .setConstantHeadingInterpolation(shoot1.getHeading())
+                .setConstantHeadingInterpolation(shoot3.getHeading())
                 .addParametricCallback(0.8, ()-> {
                             follower.setMaxPower(0.85);
                         }
@@ -291,8 +300,8 @@ public class CloseRed12Ball extends LinearOpMode {
                 .addParametricCallback(0.99,()-> shootReady=true)
                 .build();
         moveScore = follower.pathBuilder()
-                .addPath(new BezierLine(shoot1,movePoint))
-                .setLinearHeadingInterpolation(shoot1.getHeading(), movePoint.getHeading())
+                .addPath(new BezierLine(shoot3,movePoint))
+                .setLinearHeadingInterpolation(shoot3.getHeading(), movePoint.getHeading())
                 .build();
     }
 
@@ -307,8 +316,8 @@ public class CloseRed12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1110;
-        int shoot0change = -12;
+        int flySpeed = 1113;
+        int shoot0change = 5;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -349,8 +358,8 @@ public class CloseRed12Ball extends LinearOpMode {
         color2 = hardwareMap.get(NormalizedColorSensor.class,"Color 2");
 
         //DIRECTIONS
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -366,7 +375,7 @@ public class CloseRed12Ball extends LinearOpMode {
                 hardwareMap.get(DcMotorEx.class, "fly1"),
                 hardwareMap.get(DcMotorEx.class, "fly2")
         );
-        flywheel.teleopMultiplier = 1.0;
+        flywheel.teleopMultiplier = 0.88;
         //endregion
 
         //region CAMERA INIT
@@ -399,7 +408,7 @@ public class CloseRed12Ball extends LinearOpMode {
         limelightWallPos = pickup1[1].getX();
         //endregion
         hoodOffset=0;
-        tuPos = -84;
+        tuPos = -95;
         flySpeed -= shoot0change;
 
         //WAIT
@@ -435,14 +444,14 @@ public class CloseRed12Ball extends LinearOpMode {
                             follower.followPath(scorePath0,true);
                             motifOn = true;
 
-                            timeout = runtime.milliseconds()+500;
                             subState++;
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = -78;
+                            tuPos = 111;
                             autoShootOn = true;
                             shootingState=0;
+                            shootReady = true;
 
                             subState++;
                         }
@@ -454,6 +463,7 @@ public class CloseRed12Ball extends LinearOpMode {
                     case 1:
                         if(subState==0){
                             follower.followPath(pickupPath1,false);
+                            tuPos = 0;
 
                             flySpeed += shoot0change;
 
@@ -463,7 +473,7 @@ public class CloseRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(gatePath,false);
-                            tuPos = -78;
+                            tuPos = -75;
                             gateCutoff = true;
 
                             timeout = runtime.milliseconds()+1400;
@@ -492,7 +502,8 @@ public class CloseRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
-                            tuPos += 3;
+                            tuPos = -74;
+                            flySpeed -= 15;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -506,6 +517,8 @@ public class CloseRed12Ball extends LinearOpMode {
                     case 3:
                         if(subState==0){
                             follower.followPath(pickupPath3,false);
+                            tuPos = -33;
+                            flySpeed = 1103;
 
                             subState++;
                         }
@@ -513,7 +526,6 @@ public class CloseRed12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath3,true);
-                            tuPos += 2;
                             autoShootOn = true;
                             shootingState=0;
 
@@ -525,7 +537,9 @@ public class CloseRed12Ball extends LinearOpMode {
 
                     case 4:
 //                        transOn=false;
-                        follower.followPath(moveScore);
+                        if(runtime.milliseconds()<25000){
+                            follower.followPath(moveScore);
+                        }
                         pathState++;
 //                        flySpeed=0;
                         running=false;
@@ -667,7 +681,7 @@ public class CloseRed12Ball extends LinearOpMode {
                 else if(diff==1) spindexerIndex=0;
                 else spindexerIndex=2;
                 spindexerAtTarget=false;
-                timeout = runtime.milliseconds() + 300;
+//                timeout = runtime.milliseconds() + 300;
 
                 shootingState++;
             }
@@ -682,17 +696,22 @@ public class CloseRed12Ball extends LinearOpMode {
 //                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
 //                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
                 if(shootingState==1){
+                    timeout = runtime.milliseconds()+500;
+                    shootingState++;
+                }
+                else if(shootingState==2){
                     transOn = true;
                     if(turretAtTarget){
-                        spin1.setPower(0.93);
-                        spin2.setPower(0.93);
+                        spin1.setPower(0.85);
+                        spin2.setPower(0.85);
                         cutoffSpinPID = true;
 
-                        timeout=runtime.milliseconds()+900;
+                        timeout=runtime.milliseconds()+1000;
+                        if(pathState==3) timeout += 1000;
                         shootingState++;
                     }
                 }
-                else if(shootingState==2){
+                else if(shootingState==3){
                     savedBalls[0]='n'; savedBalls[1]='n'; savedBalls[2]='n';
 
                     cutoffSpinPID = false;
@@ -707,6 +726,7 @@ public class CloseRed12Ball extends LinearOpMode {
 
             //region FLYWHEEL
             double voltage = hardwareMap.voltageSensor.iterator().next().getVoltage();
+//            flySpeed = 0;
             flywheel.updateFlywheelPID(
                     flySpeed,
                     dtSec,
@@ -722,7 +742,8 @@ public class CloseRed12Ball extends LinearOpMode {
             //endregion
 
             //region TURRET
-            updateTurretPID(-tuPos+7, dtSec);
+//            tuPos = applyTurretLimitWithWrap(tuPos);
+            updateTurretPID(-tuPos + 7, dtSec);
             //endregion
 
             //region TRANSFER
@@ -761,6 +782,30 @@ public class CloseRed12Ball extends LinearOpMode {
     }
 
     //region HELPER METHODS
+    private double applyTurretLimitWithWrap(double desiredDeg) {
+        // Always reason in [-180, 180]
+        desiredDeg = normalizeDeg180(desiredDeg);
+
+        // Where the turret actually is right now (also [-180, 180])
+        double currentDeg = getTurretAngleDeg();
+
+        // Shortest signed rotation from current to desired (e.g. +20, -30, etc.)
+        double errorToDesired = normalizeDeg180(desiredDeg - currentDeg);
+
+        // "Ideal" next target if we perfectly matched desired in one step
+        double candidateDeg = currentDeg + errorToDesired;
+
+        // Hard safety clamp to keep off the wires
+        return clamp(candidateDeg, -TURRET_LIMIT_DEG, TURRET_LIMIT_DEG);
+    }
+    private double normalizeDeg180(double deg) {
+        deg = (deg + 180) % 360;
+        if (deg < 0) deg += 360;
+        return deg - 180;
+    }
+    private double getTurretAngleDeg() {
+        return normalizeDeg180(mapVoltageToAngle360(turretEncoder.getVoltage(), 0.01, 3.29));
+    }
     private char getRealColor(){
         char c1 = getDetectedColor1(color1);
         char c2 = getDetectedColor2(color2);
@@ -990,6 +1035,11 @@ public class CloseRed12Ball extends LinearOpMode {
         // clamp to [-1,1] and apply deadband
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < tuDeadband) out = 0.0;
+//target = -100ish angle = 95ish
+        if(targetAngle<-80&&(angle>80&&angle<200)){
+            out = 1;
+            telemetry.addData("Turret pls dont cut wires POWER",out);
+        }
 
         // if within tolerance, zero outputs and decay integrator to avoid bumping
         if (Math.abs(error) <= tuToleranceDeg) {
@@ -1009,7 +1059,7 @@ public class CloseRed12Ball extends LinearOpMode {
 
         // telemetry for PID (keeps concise, add more if you want)
         telemetry.addData("Turret Target", "%.1f°", targetAngle);
-
+        telemetry.addData("Turret Angle", "%.1f°", angle);
     }
 
     private int readMotif(){
