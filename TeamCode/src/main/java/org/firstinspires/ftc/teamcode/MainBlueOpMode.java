@@ -147,10 +147,10 @@ public class MainBlueOpMode extends LinearOpMode
     // PID State
     private double tuIntegral = 0.0;
     private double tuLastError = 0.0;
-    private double tuIntegralLimit = 500.0;
+    private double tuIntegralLimit = 90.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 2.0;
+    private final double tuToleranceDeg = 1.5;
     private final double tuDeadband = 0.02;
 
     // Turret Position
@@ -166,7 +166,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1023, 1050, 1076, 1121, 1139, 1149, 1155, 1210, 1242, 1260, 1265, 1254, 1276, 1290, 1368, 1391, 1418};
+    private static final double[] FLY_SPEEDS =          {1005, 1023, 1050, 1076, 1121, 1140, 1150, 1156, 1212, 1238, 1252, 1258, 1254, 1269, 1284, 1368, 1391, 1418};
     private static final double[] AIR_TIME =   {2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
@@ -206,6 +206,7 @@ public class MainBlueOpMode extends LinearOpMode
     Vector velocity = new Vector(0,0);
 
     double shotTime = 0;
+    public int loopNum = 0;
     @Override
     public void runOpMode() {
         //region OPERATIONAL VARIABLES
@@ -276,8 +277,8 @@ public class MainBlueOpMode extends LinearOpMode
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
-        fly1.setDirection(DcMotor.Direction.FORWARD);
-        fly2.setDirection(DcMotor.Direction.REVERSE);
+        fly1.setDirection(DcMotor.Direction.REVERSE);
+        fly2.setDirection(DcMotor.Direction.FORWARD);
         intake.setDirection(DcMotor.Direction.REVERSE);
         trans.setDirection(DcMotor.Direction.REVERSE);
         spin1.setDirection(CRServo.Direction.FORWARD);
@@ -321,6 +322,7 @@ public class MainBlueOpMode extends LinearOpMode
         //endregion
 
         while (opModeIsActive()) {
+            loopNum++;
             //region IMPORTANT VARS
             //needed at beginning of loop, don't change location
             double nowMs = runtime.milliseconds();
@@ -393,6 +395,7 @@ public class MainBlueOpMode extends LinearOpMode
                 double tagRange = desiredTag.ftcPose.range;
                 adjustDecimation(tagRange);
 
+                telemetry.addData("Target ID", desiredTag.id);
                 telemetry.addData("Tag Range", "%.1f inches", tagRange);
             }
             //endregion
@@ -474,12 +477,6 @@ public class MainBlueOpMode extends LinearOpMode
                 adjustedRange = odomRange - radialDisplacement;
             }
 
-            //velocity perpendicular to the goal.
-            double tanVel = Math.sqrt(
-                    totalSpeed*totalSpeed -
-                            radVel * radVel
-            );
-
             //smooth range so values rnt erratic
             if (!isInitialized) {
                 smoothedRange = adjustedRange;
@@ -496,6 +493,7 @@ public class MainBlueOpMode extends LinearOpMode
             }
 
             telemetry.addData("Odom Range", "%.1f inches", odomRange);
+            telemetry.addData("Radial Velocity", "%.1f in/s", radVel);
             telemetry.addData("Adjusted Range", "%.1f inches", smoothedRange);
             //endregion
 
@@ -580,8 +578,11 @@ public class MainBlueOpMode extends LinearOpMode
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
             if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 40)) {
-                recoilOffset = flyDiff*0;
+                recoilOffset = flyDiff*0.15;
             }
+            telemetry.addData("FLY DIFF", flyDiff);
+            telemetry.addData("RECOIL", recoilOffset);
+
 
             double finalHoodAngle = clamp(hoodAngle + hoodOffset + recoilOffset, 26, 292.6);
 
@@ -775,7 +776,14 @@ public class MainBlueOpMode extends LinearOpMode
 
             telemetry.addData("Flywheel Speed", "%.0f", flySpeed + flyOffset);
             telemetry.addData("last position", StateVars.lastPose);
+            telemetry.addData("avg looptime", runtime.milliseconds()/loopNum);
+
+            telemetry.addData("velocity 1", fly1.getVelocity());
+            telemetry.addData("velocity 2", fly2.getVelocity());
             telemetry.addData("LAST ERROR", spindexer.lastError);
+            telemetry.addData("Turret Integral", tuIntegral);
+            telemetry.addData("Turret Integral", tuLastError);
+
             telemetry.update();
         }
     }
@@ -1040,6 +1048,8 @@ public class MainBlueOpMode extends LinearOpMode
         }
 
         aprilTag.setDecimation(newDecimation);
+        telemetry.addData("Decimation: ", "%d", newDecimation);
+
     }
     private double normalizeDeg180(double deg) {
         deg = (deg + 180) % 360;
