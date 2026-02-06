@@ -208,15 +208,15 @@ public class CloseBlue12BallPartner extends LinearOpMode {
         pickup1[2] = new Pose(48.083, 54.73,Math.toRadians(180));
 
         pickup2[0] = new Pose(39.06642541436464,53.75209944751381,Math.toRadians(180));
-        pickup2[1] = new Pose(18.632960773480665,68.18695359116022,Math.toRadians(170));
+        pickup2[1] = new Pose(19.232960773480665,67.58695359116022,Math.toRadians(170));
         pickup2[2] = new Pose(48.55110497237568,45.52872928176797,Math.toRadians(180));
 
 //        junoPose[0] = new Pose(18.38141376340592,58.21351254468639,Math.toRadians(90));
 //        junoPose[1] = new Pose(14.11878453038675,53.790055248618806,Math.toRadians(90));
         junoPose[0] = new Pose(18.646607133571667,57.15273906402341,Math.toRadians(90));
         junoPose[1] = new Pose(13.853591160221004,50.3425414364641,Math.toRadians(90));
-        junoPose[2] = new Pose(21.649171270718252,59.09668508287294,Math.toRadians(90));
-        junoPose[3] = new Pose(14.121546961325976,60.6767955801105,Math.toRadians(90));
+        junoPose[2] = new Pose(21.649171270718252,59.09668508287294,Math.toRadians(110));
+        junoPose[3] = new Pose(14.121546961325976,60.6767955801105,Math.toRadians(110));
 
         pickup3[0] = new Pose(46.44,81.52,Math.toRadians(180));
         pickup3[1] = new Pose(17.5,84,Math.toRadians(180));
@@ -244,12 +244,12 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     intakeOn = true;
 //                    pidKd += 0.0004;
                 })
-                .setTimeoutConstraint(500)
+//                .setTimeoutConstraint(500)
                 .build();
         pickupPath2 = follower.pathBuilder()//intaking gate
                 .addPath(new BezierCurve(shoot1,pickup2[0],pickup2[1]))
                 .setLinearHeadingInterpolation(shoot1.getHeading(),pickup2[1].getHeading())
-                .addParametricCallback(0.8,()->{
+                .addParametricCallback(0.4,()->{
 //                    follower.setMaxPower(0.36);
                     intakeOn = true;
                 })
@@ -275,7 +275,7 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                     intakeOn = true;
 //                    pidKd += 0.0004;
                 })
-                .setTimeoutConstraint(500)
+//                .setTimeoutConstraint(500)
                 .build();
         scorePath1 = follower.pathBuilder()
                 .addPath(new BezierCurve(pickup1[1],pickup1[2],shoot1))
@@ -727,7 +727,8 @@ public class CloseBlue12BallPartner extends LinearOpMode {
                         spin2.setPower(0.8);
                         cutoffSpinPID = true;
 
-                        timeout=runtime.milliseconds()+1300;
+                        timeout=runtime.milliseconds()+1000;
+                        if(pathState==3) timeout += 1000;
                         shootingState++;
 //                    }
                 }

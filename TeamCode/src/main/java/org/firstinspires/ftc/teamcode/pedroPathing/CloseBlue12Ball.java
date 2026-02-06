@@ -141,14 +141,14 @@ public class CloseBlue12Ball extends LinearOpMode {
     //region SPINDEXER SYSTEM
     // Spindexer PIDF Constants
     private double pidKp = 0.004;
-    private double pidKi = 0.0;
+    private double pidKi = 0.001;
     private double pidKd = 0.00035;//0.00065
     private double pidKf = 0.022;
 
     // Spindexer PID State
     private double integral = 0.0;
     private double lastError = 0.0;
-    private double integralLimit = 4.0;
+    private double integralLimit = 6.0;
     private double pidLastTimeMs = 0.0;
     private double lastFilteredD = 0.0;
 
@@ -184,10 +184,10 @@ public class CloseBlue12Ball extends LinearOpMode {
     // PID State
     private double tuIntegral = 0.0;
     private double tuLastError = 0.0;
-    private double tuIntegralLimit = 500.0;
+    private double tuIntegralLimit = 110.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 2.0;
+    private final double tuToleranceDeg = 1.5;
     private final double tuDeadband = 0.03;
     private boolean turretAtTarget = false;
     private static final double TURRET_LIMIT_DEG = 150.0;
@@ -316,8 +316,8 @@ public class CloseBlue12Ball extends LinearOpMode {
 
         int shootingState = 0;
         boolean running = true;
-        int flySpeed = 1120;
-        int shoot0change = 12;
+        int flySpeed = 1113;
+        int shoot0change = 5;
         double spindexerSavedPos = 0;
 
         //Ball tracking
@@ -375,7 +375,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                 hardwareMap.get(DcMotorEx.class, "fly1"),
                 hardwareMap.get(DcMotorEx.class, "fly2")
         );
-        flywheel.teleopMultiplier = 1.0;
+        flywheel.teleopMultiplier = 0.88;
         //endregion
 
         //region CAMERA INIT
@@ -448,15 +448,12 @@ public class CloseBlue12Ball extends LinearOpMode {
                         }
                         //READ MOTIF is subState 1
                         else if(subState==2){
-                            tuPos = 107;
+                            tuPos = 111;
                             autoShootOn = true;
                             shootingState=0;
-                            timeout = runtime.milliseconds()+500;
+                            shootReady = true;
 
                             subState++;
-                        }
-                        else if(subState==3){
-                            shootReady = true;
                         }
                         //AUTO SHOOTING is subState 3, resets subState, and increments pathState
                         break;
@@ -505,7 +502,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         else if(subState==2){
                             follower.setMaxPower(1);
                             follower.followPath(scorePath2,true);
-                            tuPos += 3;
+                            tuPos = -74;
                             flySpeed -= 15;
                             autoShootOn = true;
                             shootingState=0;
@@ -520,8 +517,8 @@ public class CloseBlue12Ball extends LinearOpMode {
                     case 3:
                         if(subState==0){
                             follower.followPath(pickupPath3,false);
-                            tuPos = -29;
-                            flySpeed = 1110;
+                            tuPos = -33;
+                            flySpeed = 1103;
 
                             subState++;
                         }
@@ -696,13 +693,13 @@ public class CloseBlue12Ball extends LinearOpMode {
 
             if(autoShootOn&&runtime.milliseconds()>timeout&&(shootReady||!follower.isBusy())){
                 intake.setPower(0);
+//                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
+//                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
                 if(shootingState==1){
                     timeout = runtime.milliseconds()+500;
                     shootingState++;
                 }
-//                double avgSpeed = (fly1.getVelocity() + fly2.getVelocity()) / 2.0;
-//                if(shootingState==1&&spindexerAtTarget&&avgSpeed > flySpeed * 0.94 && avgSpeed < flySpeed * 1.08){
-                if(shootingState==2){
+                else if(shootingState==2){
                     transOn = true;
                     if(turretAtTarget){
                         spin1.setPower(0.85);
@@ -1051,7 +1048,7 @@ public class CloseBlue12Ball extends LinearOpMode {
         }
 
         //to know its set
-        turretAtTarget = (Math.abs(error) <= tuToleranceDeg + 5);
+        turretAtTarget = (Math.abs(error) <= tuToleranceDeg + 5.5);
 
         // apply powers (flip one if your servo is mirrored - change sign if needed)
         turret1.setPower(out);
