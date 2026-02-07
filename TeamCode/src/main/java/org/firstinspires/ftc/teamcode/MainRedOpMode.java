@@ -167,7 +167,7 @@ public class MainRedOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1022, 1047, 1076, 1118, 1137, 1146, 1154, 1212, 1236, 1244, 1252, 1255, 1264, 1281, 1363, 1386, 1418};
+    private static final double[] FLY_SPEEDS =          {1004, 1016, 1041, 1071, 1115, 1132, 1143, 1151, 1212, 1236, 1244, 1252, 1253, 1259, 1273, 1358, 1387, 1421};
     private static final double[] AIR_TIME =   {2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;

@@ -518,7 +518,7 @@ public class CloseBlue12Ball extends LinearOpMode {
                         if(subState==0){
                             follower.followPath(pickupPath3,false);
                             tuPos = -33;
-                            flySpeed = 1103;
+                            flySpeed = 1105;
 
                             subState++;
                         }
