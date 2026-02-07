@@ -135,11 +135,11 @@ public class MainBlueOpMode extends LinearOpMode
 
     //region TURRET SYSTEM
     // PIDF Constants
-    private double tuKp = 0.0050;
+    private double tuKp = 0.0058;
     private double tuKi = 0.0006;
-    private double tuKd = 0.00014;
+    private double tuKd = 0.00015;
     private double tuKf = 0.005;
-    private static final double tuKv = 0.00;
+    private static final double tuKv = 0.0001;
 
     private double lastTuTarget = 0.0;
     private boolean lastTuTargetInit = false;
@@ -148,14 +148,15 @@ public class MainBlueOpMode extends LinearOpMode
     private double tuIntegral = 0.0;
     private double tuLastError = 0.0;
     private double tuIntegralLimit = 90.0;
+    private double tuLastD = 0.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 1.5;
-    private final double tuDeadband = 0.02;
+    private final double tuToleranceDeg = 0.85;
+    private final double tuDeadband = 0.03;
 
     // Turret Position
     private double tuPos = 0.0;
-    private static final double turretZeroDeg = 8.5;
+    private static final double turretZeroDeg = 9.2;
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
     //endregion
@@ -166,7 +167,7 @@ public class MainBlueOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1005, 1023, 1050, 1076, 1121, 1140, 1150, 1156, 1212, 1238, 1252, 1258, 1254, 1269, 1284, 1368, 1391, 1418};
+    private static final double[] FLY_SPEEDS =          {1004, 1016, 1041, 1071, 1115, 1132, 1143, 1151, 1212, 1236, 1244, 1252, 1253, 1259, 1273, 1358, 1387, 1421};
     private static final double[] AIR_TIME =   {2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
@@ -578,7 +579,7 @@ public class MainBlueOpMode extends LinearOpMode
             double flyDiff = flyTargetTicksPerSec - flywheel.lastMeasuredVelocity;
 
             if ((flyOn && spindexer.getRapidFire()) && (Math.abs(flyDiff) > 40)) {
-                recoilOffset = flyDiff*0.15;
+                recoilOffset = flyDiff*0.28;
             }
             telemetry.addData("FLY DIFF", flyDiff);
             telemetry.addData("RECOIL", recoilOffset);
@@ -1088,26 +1089,25 @@ public class MainBlueOpMode extends LinearOpMode
 
         double error = -angleError(targetAngle, angle);
 
+        //if (Math.abs(error) > 8.0) tuIntegral = 0;
+
         tuIntegral += error * dt;
         tuIntegral = clamp(tuIntegral, -tuIntegralLimit, tuIntegralLimit);
 
-        double d = (error - tuLastError) / Math.max(dt, 1e-6);
+        double rawD = (error - tuLastError) / Math.max(dt, 1e-6);
+        double d = 0.5 * tuLastD + 0.5 * rawD;
+        tuLastD = d;
 
         double out = tuKp * error + tuKi * tuIntegral + tuKd * d;
 
         // stiction FF
-        if (Math.abs(error) > 1.0) out += tuKf * Math.signum(error);
+        if (Math.abs(error) > tuToleranceDeg) out += tuKf * Math.signum(error);
 
         // target-rate FF (helps match d(turret)/d(target))
         out += tuKv * targetVelDegPerSec;
 
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < tuDeadband) out = 0.0;
-
-        if (Math.abs(error) <= tuToleranceDeg) {
-            out = 0.0;
-            tuIntegral *= 0.2;
-        }
 
         turret1.setPower(out);
         turret2.setPower(out);
