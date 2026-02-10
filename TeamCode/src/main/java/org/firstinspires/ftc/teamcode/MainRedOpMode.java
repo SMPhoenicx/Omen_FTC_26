@@ -303,9 +303,6 @@ public class MainRedOpMode extends LinearOpMode
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(StateVars.lastPose);
 
-        initAprilTag();
-        setManualExposure(4, 200);
-
         //TODO check if pattern works
         int patternTag = StateVars.patternTagID;
         if (patternTag == 21) {
@@ -376,80 +373,80 @@ public class MainRedOpMode extends LinearOpMode
 
             //endregion
 
-            //region VISION PROCESSING
-            targetFound = false;
-            desiredTag = null;
-
-            //Webcam april tag processing
-            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-            for (AprilTagDetection detection : currentDetections) {
-                if (detection.metadata != null) {
-                    if (detection.id == DESIRED_TAG_ID) {
-                        desiredTag = detection;
-                        targetFound = true;
-                        break;
-                    }
-                }
-            }
-            // Process Target Data
-            if (targetFound) {
-                double tagRange = desiredTag.ftcPose.range;
-                adjustDecimation(tagRange);
-
-                telemetry.addData("Target ID", desiredTag.id);
-                telemetry.addData("Tag Range", "%.1f inches", tagRange);
-            }
-            //endregion
+//            //region VISION PROCESSING
+//            targetFound = false;
+//            desiredTag = null;
+//
+//            //Webcam april tag processing
+//            List<AprilTagDetection> currentDetections = aprilTag.getDetections();
+//            for (AprilTagDetection detection : currentDetections) {
+//                if (detection.metadata != null) {
+//                    if (detection.id == DESIRED_TAG_ID) {
+//                        desiredTag = detection;
+//                        targetFound = true;
+//                        break;
+//                    }
+//                }
+//            }
+//            // Process Target Data
+//            if (targetFound) {
+//                double tagRange = desiredTag.ftcPose.range;
+//                adjustDecimation(tagRange);
+//
+//                telemetry.addData("Target ID", desiredTag.id);
+//                telemetry.addData("Tag Range", "%.1f inches", tagRange);
+//            }
+//            //endregion
 
             //region VISION-BASED TURRET CORRECTION
-            if (trackingOn && targetFound && desiredTag != null) {
-
-                double range = desiredTag.ftcPose.range;
-
-                // Gate by range to ensure measurements are credible
-                if (range > VISION_MIN_RANGE && range < VISION_MAX_RANGE) {
-                    double rx = robotPose.getX();
-                    double ry = robotPose.getY();
-
-                    double angleToTagRad  = Math.atan2(TAG_Y - ry, TAG_X - rx);
-                    double angleToGoalRad = Math.atan2(goalY - ry, goalX - rx);
-
-                    double angleToTagDeg  = Math.toDegrees(angleToTagRad);
-                    double angleToGoalDeg = Math.toDegrees(angleToGoalRad);
-
-                    double angleDiffDeg = normalizeDeg180(angleToGoalDeg - angleToTagDeg);
-                    double measuredTagBearingDeg = -desiredTag.ftcPose.bearing;
-
-                    double correctedBearingToAimDeg = measuredTagBearingDeg + angleDiffDeg;
-
-                    //    This amplifies correction if robot is far from the diagonal.
-                    double signedDist = (rx + ry) - 144.0; // >0 means y > 144 - x (your "right" side)
-                    double maxDistForScale = 120.0; // max expected magnitude (tune)
-                    double kScale = 0.5; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
-                    double lateralScale = 1.0 + kScale * (Math.max(-maxDistForScale, Math.min(maxDistForScale, signedDist)) / maxDistForScale);
-                    // Clamp so scale stays reasonable:
-                    lateralScale = Math.max(0.5, Math.min(2.0, lateralScale));
-
-                    double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
-
-                    // Proportional assistgain
-                    double pAssist = Math.max(
-                            -2.5,
-                            Math.min(2.5, VISION_P_GAIN * scaledCorrectedBearingDeg)
-                    );
-
-                    // Integral correction
-                    visionCorrectionDeg += VISION_CORRECTION_GAIN * scaledCorrectedBearingDeg;
-
-                    visionCorrectionDeg += pAssist;
-
-                    // Hard clamp to avoid overcorrection
-                    visionCorrectionDeg = Math.max(-MAX_VISION_CORRECTION_DEG, Math.min(MAX_VISION_CORRECTION_DEG, visionCorrectionDeg));
-                }
-            } else {
-                // Slow decay when tag not visible so stale corrections fade
-                visionCorrectionDeg *= 0.995;
-            }
+//            if (trackingOn && targetFound && desiredTag != null) {
+//
+//                double range = desiredTag.ftcPose.range;
+//
+//                // Gate by range to ensure measurements are credible
+//                if (range > VISION_MIN_RANGE && range < VISION_MAX_RANGE) {
+//                    double rx = robotPose.getX();
+//                    double ry = robotPose.getY();
+//
+//                    double angleToTagRad  = Math.atan2(TAG_Y - ry, TAG_X - rx);
+//                    double angleToGoalRad = Math.atan2(goalY - ry, goalX - rx);
+//
+//                    double angleToTagDeg  = Math.toDegrees(angleToTagRad);
+//                    double angleToGoalDeg = Math.toDegrees(angleToGoalRad);
+//
+//                    double angleDiffDeg = normalizeDeg180(angleToGoalDeg - angleToTagDeg);
+//                    double measuredTagBearingDeg = -desiredTag.ftcPose.bearing;
+//
+//                    double correctedBearingToAimDeg = measuredTagBearingDeg + angleDiffDeg;
+//
+//                    //    This amplifies correction if robot is far from the diagonal.
+//                    double signedDist = (rx + ry) - 144.0; // >0 means y > 144 - x (your "right" side)
+//                    double maxDistForScale = 120.0; // max expected magnitude (tune)
+//                    double kScale = 0.5; // scaling aggressiveness (tune 0.0..2.0). 0 = no extra scaling
+//                    double lateralScale = 1.0 + kScale * (Math.max(-maxDistForScale, Math.min(maxDistForScale, signedDist)) / maxDistForScale);
+//                    // Clamp so scale stays reasonable:
+//                    lateralScale = Math.max(0.5, Math.min(2.0, lateralScale));
+//
+//                    double scaledCorrectedBearingDeg = correctedBearingToAimDeg * lateralScale;
+//
+//                    // Proportional assistgain
+//                    double pAssist = Math.max(
+//                            -2.5,
+//                            Math.min(2.5, VISION_P_GAIN * scaledCorrectedBearingDeg)
+//                    );
+//
+//                    // Integral correction
+//                    visionCorrectionDeg += VISION_CORRECTION_GAIN * scaledCorrectedBearingDeg;
+//
+//                    visionCorrectionDeg += pAssist;
+//
+//                    // Hard clamp to avoid overcorrection
+//                    visionCorrectionDeg = Math.max(-MAX_VISION_CORRECTION_DEG, Math.min(MAX_VISION_CORRECTION_DEG, visionCorrectionDeg));
+//                }
+//            } else {
+//                // Slow decay when tag not visible so stale corrections fade
+//                visionCorrectionDeg *= 0.995;
+//            }
             //endregion
 
             //region AUTO FLYSPEED/ANGLE
@@ -688,8 +685,7 @@ public class MainRedOpMode extends LinearOpMode
                             robotPose.getY(),
                             robotPose.getHeading()
                     )
-                            + tuOffset
-                            + visionCorrectionDeg;
+                            + tuOffset;
 
                 }
             }

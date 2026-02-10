@@ -41,6 +41,7 @@ public class SpindexerController {
     public volatile double currentIntegral = 0;
 
     public int prevSpindexerIndex = 0;
+    public int classifiedBalls = 0;
     public SpindexerController(CRServo s1, CRServo s2, AnalogInput enc) {
         this.spin1 = s1;
         this.spin2 = s2;
@@ -182,6 +183,9 @@ public class SpindexerController {
         if(diff==0) targetIndex=4;
         else if(diff==1) targetIndex=0;
         else targetIndex=2;
+
+        targetIndex += classifiedBalls;
+        targetIndex %= SPINDEXER_POSITIONS.length;
     }
 
     public void calculateNearestIndex() {
