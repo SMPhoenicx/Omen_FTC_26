@@ -151,12 +151,12 @@ public class MainBlueOpMode extends LinearOpMode
     private double tuLastD = 0.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 0.85;
+    private final double tuToleranceDeg = 0.8;
     private final double tuDeadband = 0.03;
 
     // Turret Position
     private double tuPos = 0.0;
-    private static final double turretZeroDeg = 10.2;
+    private static final double turretZeroDeg = 12.2;
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
     //endregion
@@ -602,6 +602,13 @@ public class MainBlueOpMode extends LinearOpMode
                     flywheel.Kd = 0.0003;
                 }
                 tranOn = false;
+            }
+
+            if (!spindexer.hasEmptySlot()) {
+                SpindexerController.Kf = 0.025;
+            }
+            else {
+                SpindexerController.Kf = 0.01;
             }
 
             if (intakeOn) {

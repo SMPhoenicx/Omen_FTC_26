@@ -151,12 +151,12 @@ public class MainRedOpMode extends LinearOpMode
     private double tuLastD = 0.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 0.85;
+    private final double tuToleranceDeg = 0.8;
     private final double tuDeadband = 0.03;
 
     // Turret Position
     private double tuPos = 0.0;
-    private static final double turretZeroDeg = 9.2;
+    private static final double turretZeroDeg = 4;
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
     //endregion
@@ -167,8 +167,8 @@ public class MainRedOpMode extends LinearOpMode
 
     private static final double[] CAM_RANGE_SAMPLES =   {25, 31.8, 37, 39.2, 44.2,  52.6, 53.1, 56.9, 61.5, 65.6, 70.3, 73.4, 77.5, 84.3, 91.8, 100.4, 110.0, 118.4};
     private static final double[] ODOM_RANGE_SAMPLES =  {45.2, 50.2, 55.3, 60.9, 66.5, 72.2, 76.7, 81.1, 86.3, 90.9, 96.2, 99.7, 104.3, 109.9, 118.1, 128.5, 139.6, 148.7};
-    private static final double[] FLY_SPEEDS =          {1004, 1016, 1041, 1071, 1115, 1132, 1143, 1151, 1212, 1236, 1244, 1252, 1253, 1259, 1273, 1358, 1387, 1421};
-    private static final double[] AIR_TIME =   {2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
+    private static final double[] FLY_SPEEDS =          {1004, 1016, 1041, 1071, 1115, 1132, 1143, 1151, 1212, 1233, 1241, 1249, 1253, 1256, 1273, 1358, 1387, 1421};
+    private static final double[] AIR_TIME =   {2.69, 2.79, 2.79, 2.79, 2.79, 2.79, 2.79, 2.89, 2.89, 2.89, 2.89, 2.89, 2.89, 3, 3.23, 3.5, 3.79, 4.27};  //seconds divide all by 4
     private static final double[] HOOD_ANGLES = GlobalOffsets.globalHoodAngles;
     private double smoothedRange = 0;
     private static final double ALPHA = 0.8;
@@ -235,7 +235,6 @@ public class MainRedOpMode extends LinearOpMode
         boolean localizeApril = true;
 
         // Color Sorting
-        int classifiedBalls = 0;
         //endregion
 
         //region HARDWARE INITIALIZATION
@@ -592,9 +591,9 @@ public class MainRedOpMode extends LinearOpMode
             if (gamepad1.rightBumperWasPressed()) {
                 intakeOn = !intakeOn;
                 if (intakeOn) {
-                    SpindexerController.Kp = 0.0063;
+                    SpindexerController.Kp = 0.0062;
                     SpindexerController.Kd = 0.0007;
-                    SpindexerController.tau = 0.05;
+                    SpindexerController.tau = 0.051;
                     flywheel.Kd = 0.0007;
                 } else {
                     SpindexerController.Kp = 0.007;
@@ -603,6 +602,13 @@ public class MainRedOpMode extends LinearOpMode
                     flywheel.Kd = 0.0003;
                 }
                 tranOn = false;
+            }
+
+            if (!spindexer.hasEmptySlot()) {
+                SpindexerController.Kf = 0.033;
+            }
+            else {
+                SpindexerController.Kf = 0.01;
             }
 
             if (intakeOn) {
@@ -646,9 +652,9 @@ public class MainRedOpMode extends LinearOpMode
             }
 
             //Pattern "number of balls classified" thing wtvr
-            if(gamepad2.squareWasPressed()) classifiedBalls = 0;
-            if(gamepad2.crossWasPressed()) classifiedBalls = 1;
-            if(gamepad2.circleWasPressed()) classifiedBalls = 2;
+            if(gamepad2.squareWasPressed()) spindexer.classifiedBalls = 0;
+            if(gamepad2.crossWasPressed()) spindexer.classifiedBalls = 1;
+            if(gamepad2.circleWasPressed()) spindexer.classifiedBalls = 2;
 
             //Pattern sorting
             if (gamepad1.dpadDownWasPressed()) {
@@ -706,10 +712,10 @@ public class MainRedOpMode extends LinearOpMode
 
             //region TURRET CONTROl
             if (gamepad2.dpadLeftWasPressed()) {
-                tuOffset -= 5;
+                tuOffset -= 7;
             }
             if (gamepad2.dpadRightWasPressed()) {
-                tuOffset += 5;
+                tuOffset += 7;
             }
 
             //needs to stay right above the final calculations, otherwise will get overwritten
