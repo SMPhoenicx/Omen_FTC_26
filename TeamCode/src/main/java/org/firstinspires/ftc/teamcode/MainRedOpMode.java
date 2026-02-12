@@ -46,6 +46,7 @@ import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -137,9 +138,10 @@ public class MainRedOpMode extends LinearOpMode
     // PIDF Constants
     private double tuKp = 0.0058;
     private double tuKi = 0.0006;
-    private double tuKd = 0.00015;
+    private double tuKd = 0.00025;
     private double tuKf = 0.005;
-    private static final double tuKv = 0.0001;
+    private static final double tuKv = 0.0003;
+    private static final double tuKa = 0.00005;
 
     private double lastTuTarget = 0.0;
     private boolean lastTuTargetInit = false;
@@ -151,12 +153,12 @@ public class MainRedOpMode extends LinearOpMode
     private double tuLastD = 0.0;
 
     // Control Parameters
-    private final double tuToleranceDeg = 0.8;
-    private final double tuDeadband = 0.03;
+    private final double tuToleranceDeg = 0.5;
+    private final double tuDeadband = 0.01;
 
     // Turret Position
     private double tuPos = 0.0;
-    private static final double turretZeroDeg = 4;
+    private static final double turretZeroDeg = 3.8;
     private static final double TURRET_LIMIT_DEG = 150.0;
     private double tuOffset = 0.0;
     //endregion
@@ -729,29 +731,22 @@ public class MainRedOpMode extends LinearOpMode
             double safeTurretTargetDeg = applyTurretLimitWithWrap(rawTurretTargetDeg);
             tuPos = safeTurretTargetDeg;
 
-            double targetVelDegPerSec = 0.0;
-
+            double targetVel = 0.0;
+            double targetAccel = 0;
+            double robotAngVel = Math.toDegrees(follower.getAngularVelocity());
+            double dTarget = normalizeDeg180(safeTurretTargetDeg - lastTuTarget) / Math.max(dtSec, 1e-3);
             //feedforward
             if (!lastTuTargetInit) {
-                lastTuTarget = safeTurretTargetDeg;
                 lastTuTargetInit = true;
             } else if (trackingOn) {
-                double dTarget = normalizeDeg180(safeTurretTargetDeg - lastTuTarget);
-                targetVelDegPerSec = dTarget / Math.max(dtSec, 1e-3);
-                if (voltage >= 12.8) {
-                    targetVelDegPerSec += -turnInput * 300;
-                }
-                if (voltage < 12.8) {
-                    targetVelDegPerSec += -turnInput * 260;
-                }
-                lastTuTarget = safeTurretTargetDeg;
+                targetVel = dTarget - robotAngVel;
             } else {
                 // no FF when not tracking
-                targetVelDegPerSec = 0.0;
-                lastTuTarget = safeTurretTargetDeg;
+                targetVel = 0.0;
             }
+            lastTuTarget = safeTurretTargetDeg;
 
-            updateTurretPIDWithTargetFF(tuPos, targetVelDegPerSec, dtSec);
+            updateTurretPIDWithTargetFF(safeTurretTargetDeg, targetVel, dtSec);
             //endregion
 
             //region DRIVE CONTROL
@@ -790,7 +785,6 @@ public class MainRedOpMode extends LinearOpMode
             telemetry.update();
         }
     }
-
 
     //region HELPER METHODS
     public void moveRobot(double x, double y, double yaw) {
@@ -1086,7 +1080,7 @@ public class MainRedOpMode extends LinearOpMode
     }
 
     //TODO check ff and calculations for this, make as fast as possible
-    private void updateTurretPIDWithTargetFF(double targetAngle, double targetVelDegPerSec, double dt) {
+    private void updateTurretPIDWithTargetFF(double targetAngle, double targetVel, double dt) {
         double angle = getTurretAngleDeg();
 
         double error = -angleError(targetAngle, angle);
@@ -1106,7 +1100,7 @@ public class MainRedOpMode extends LinearOpMode
         if (Math.abs(error) > tuToleranceDeg) out += tuKf * Math.signum(error);
 
         // target-rate FF (helps match d(turret)/d(target))
-        out += tuKv * targetVelDegPerSec;
+        out += tuKv * targetVel;
 
         out = Range.clip(out, -1.0, 1.0);
         if (Math.abs(out) < tuDeadband) out = 0.0;
